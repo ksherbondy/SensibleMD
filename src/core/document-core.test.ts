@@ -203,7 +203,7 @@ describe('semantic positions', () => {
   it('restores an exact node and recovers by fingerprint after nearby source changes', () => {
     const original = parseSemanticDocument('# Title\n\nKeep this paragraph.\n\n## Next\n\nOther text.', 1)
     const paragraph = original.navigableNodes.find((node) => node.type === 'paragraph')
-    const position = createSemanticPosition(original, paragraph?.id ?? '')
+    const position = createSemanticPosition(original, paragraph?.id ?? '') ?? undefined
     expect(resolveSemanticPosition(original, position)).toMatchObject({ confidence: 'exact', strategy: 'node-id' })
     const edited = parseSemanticDocument('# Title\n\nNew paragraph first.\n\nKeep this paragraph.\n\n## Next\n\nOther text.', 2)
     expect(resolveSemanticPosition(edited, position)).toMatchObject({ confidence: 'high', strategy: 'node-fingerprint', node: expect.objectContaining({ text: 'Keep this paragraph.' }) })
@@ -212,7 +212,7 @@ describe('semantic positions', () => {
   it('prefers the saved section for duplicate paragraphs and falls back to it after deletion', () => {
     const original = parseSemanticDocument('# First\n\nRepeated text.\n\n# Second\n\nRepeated text.', 1)
     const target = original.navigableNodes.filter((node) => node.type === 'paragraph')[1]
-    const position = createSemanticPosition(original, target.id)
+    const position = createSemanticPosition(original, target.id) ?? undefined
     const moved = parseSemanticDocument('# First\n\nRepeated text.\n\n# Second\n\nOther text.\n\nRepeated text.', 2)
     expect(resolveSemanticPosition(moved, position)).toMatchObject({ confidence: 'high', node: expect.objectContaining({ range: expect.objectContaining({ line: 9 }) }) })
     const deleted = parseSemanticDocument('# First\n\nRepeated text.\n\n# Second\n\nOther text.', 3)
@@ -221,7 +221,7 @@ describe('semantic positions', () => {
 
   it('uses a text anchor when a paragraph is lightly edited', () => {
     const original = parseSemanticDocument('# Setup\n\nInstall the package with npm.', 1)
-    const position = createSemanticPosition(original, original.navigableNodes.find((node) => node.type === 'paragraph')?.id ?? '')
+    const position = createSemanticPosition(original, original.navigableNodes.find((node) => node.type === 'paragraph')?.id ?? '') ?? undefined
     const edited = parseSemanticDocument('# Setup\n\nInstall the package with npm today.', 2)
     expect(resolveSemanticPosition(edited, position)).toMatchObject({ strategy: 'text-anchor', confidence: 'medium' })
   })
