@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { EditorView } from '@codemirror/view'
 import App from '../App'
+import { WELCOME_DOCUMENT_ID } from '../core/identity'
 import { FakeDesktop } from './electron-double'
 import { CallScheduler } from './scheduler'
 
@@ -15,6 +16,8 @@ export interface Scenario {
   readonly desktop: FakeDesktop
   readonly scheduler: CallScheduler
   readonly user: UserEvent
+  /** Identity of the bundled sample, which the application starts on. */
+  readonly welcomeDocumentId: string
   /** Let queued microtasks and effects settle. */
   settle: () => Promise<void>
   unmount: () => void
@@ -75,6 +78,7 @@ export async function startScenario(options: ScenarioOptions = {}): Promise<Scen
     desktop,
     scheduler: desktop.scheduler,
     user,
+    welcomeDocumentId: WELCOME_DOCUMENT_ID,
     settle,
     unmount: () => { view.unmount(); desktop.uninstall() },
 

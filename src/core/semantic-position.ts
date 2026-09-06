@@ -9,8 +9,9 @@ export interface SemanticPosition {
 
 export interface PositionResolution { node: SemanticNode | null; confidence: 'exact' | 'high' | 'medium' | 'fallback'; strategy: string }
 
+// Locale-independent so that a saved position resolves identically on every machine.
 function normalizedText(value: string) {
-  return value.toLocaleLowerCase().replace(/\s+/g, ' ').trim()
+  return value.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
 function fingerprint(node: SemanticNode) {

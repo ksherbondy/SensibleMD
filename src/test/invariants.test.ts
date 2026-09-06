@@ -1,4 +1,22 @@
-import { describe, it } from 'vitest'
+import { createRequire } from 'node:module'
+import { mkdtemp, mkdir, rm, symlink, writeFile, rename } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { asDocumentId, browserDocumentId } from '../core/identity'
+import { createCollection } from '../core/document-collection'
+import { NavigationHistory } from '../core/navigation-history'
+import { FakeDesktop } from './electron-double'
+import { startScenario } from './scenario'
+
+const require = createRequire(import.meta.url)
+const { deriveDocumentId } = require('../../electron/document-identity.cjs') as { deriveDocumentId: (filePath: string) => Promise<string> }
+const { archiveStateFromPreviousIdentityScheme } = require('../../electron/legacy-state.cjs') as { archiveStateFromPreviousIdentityScheme: (userDataPath: string) => Promise<{ archived: string[]; archiveRoot?: string }> }
+
+async function temporaryTree() {
+  const root = await mkdtemp(path.join(tmpdir(), 'sensiblemd-invariant-'))
+  return { root, cleanup: () => rm(root, { recursive: true, force: true }) }
+}
 
 /**
  * Behavioural contract for the `v0.1-reference` build.
@@ -9,13 +27,95 @@ import { describe, it } from 'vitest'
  */
 
 describe('invariants: identity (Sprint 1)', () => {
-  it.todo('two same-named files in different directories never share persisted state')
-  it.todo('a stable DocumentId survives an application restart for an unchanged file')
-  it.todo('renaming or moving a file has documented, tested identity behaviour')
-  it.todo('a symlinked file and its target have documented, tested identity behaviour')
-  it.todo('inserting a document into a collection does not change other documents\' identities')
-  it.todo('navigation history distinguishes the same heading id in two different documents')
-  it.todo('legacy state written under a previous identity scheme is preserved, not deleted')
+  it('two same-named files in different directories never share persisted state', async () => {
+    const desktop = new FakeDesktop()
+      .addFile('/Users/reader/project-a/notes.md', '# Project A')
+      .addFile('/Users/reader/project-b/notes.md', '# Project B')
+    const scenario = await startScenario({ desktop })
+
+    desktop.openDialogResult = '/Users/reader/project-a/notes.md'
+    await scenario.openDocument()
+    await scenario.settle()
+    await desktop.api.saveRecoverySnapshot({ documentId: desktop.documentIdFor('/Users/reader/project-a/notes.md'), version: 1, source: '# Project A unsaved' })
+
+    desktop.openDialogResult = '/Users/reader/project-b/notes.md'
+    await scenario.openDocument()
+    await scenario.settle()
+
+    const requestedForB = desktop.recoveryRequests.filter((request) => request.operation === 'load').at(-1)
+    expect(requestedForB?.documentId).toBe(desktop.documentIdFor('/Users/reader/project-b/notes.md'))
+    expect(await desktop.api.loadRecoverySnapshot(requestedForB!.documentId)).toBeNull()
+    scenario.unmount()
+  })
+
+  it('a stable DocumentId survives an application restart for an unchanged file', async () => {
+    const { root, cleanup } = await temporaryTree()
+    const filePath = path.join(root, 'notes.md')
+    await writeFile(filePath, '# Notes')
+
+    expect(await deriveDocumentId(filePath)).toBe(await deriveDocumentId(filePath))
+
+    const browserFile = { name: 'notes.md', size: 7, lastModified: 1_700_000_000_000 }
+    expect(browserDocumentId(browserFile)).toBe(browserDocumentId({ ...browserFile }))
+    await cleanup()
+  })
+
+  it('renaming or moving a file has documented, tested identity behaviour', async () => {
+    const { root, cleanup } = await temporaryTree()
+    await mkdir(path.join(root, 'elsewhere'), { recursive: true })
+    const before = path.join(root, 'notes.md')
+    await writeFile(before, '# Notes')
+    const original = await deriveDocumentId(before)
+
+    const renamed = path.join(root, 'renamed.md')
+    await rename(before, renamed)
+    expect(await deriveDocumentId(renamed)).not.toBe(original)
+
+    const moved = path.join(root, 'elsewhere', 'renamed.md')
+    await rename(renamed, moved)
+    expect(await deriveDocumentId(moved)).not.toBe(await deriveDocumentId(renamed))
+    await cleanup()
+  })
+
+  it('a symlinked file and its target have documented, tested identity behaviour', async () => {
+    const { root, cleanup } = await temporaryTree()
+    const target = path.join(root, 'notes.md')
+    const linkPath = path.join(root, 'current.md')
+    await writeFile(target, '# Notes')
+    await symlink(target, linkPath)
+
+    expect(await deriveDocumentId(linkPath)).toBe(await deriveDocumentId(target))
+    await cleanup()
+  })
+
+  it('inserting a document into a collection does not change other documents\' identities', () => {
+    const intro = { id: asDocumentId('doc-intro'), name: 'Intro.md', source: '# Intro' }
+    const guide = { id: asDocumentId('doc-guide'), name: 'Guide.md', source: '# Guide' }
+    const before = createCollection([intro, guide]).map((document) => document.id)
+    const after = createCollection([{ id: asDocumentId('doc-preface'), name: 'Preface.md', source: '# Preface' }, intro, guide]).map((document) => document.id)
+
+    expect(after.slice(1)).toEqual(before)
+  })
+
+  it('navigation history distinguishes the same heading id in two different documents', () => {
+    const history = new NavigationHistory()
+    history.visit({ documentId: asDocumentId('doc-one'), headingId: 'heading-0-0', reason: 'manual' })
+    history.visit({ documentId: asDocumentId('doc-two'), headingId: 'heading-0-0', reason: 'manual' })
+
+    expect(history.canGoBack()).toBe(true)
+  })
+
+  it('legacy state written under a previous identity scheme is preserved, not deleted', async () => {
+    const { root, cleanup } = await temporaryTree()
+    await mkdir(path.join(root, 'documents'), { recursive: true })
+    await writeFile(path.join(root, 'documents', 'notes-md-0.json'), '{"documentId":"notes-md-0"}')
+
+    const result = await archiveStateFromPreviousIdentityScheme(root)
+
+    expect(result.archived).toContain('documents')
+    expect(result.archiveRoot).toBeDefined()
+    await cleanup()
+  })
 })
 
 describe('invariants: save and dirty state (Sprint 2)', () => {

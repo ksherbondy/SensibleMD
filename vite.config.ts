@@ -11,7 +11,7 @@ export default defineConfig({
         test: {
           name: 'core',
           environment: 'node',
-          include: ['src/core/**/*.test.ts'],
+          include: ['src/core/**/*.test.ts', 'electron/**/*.test.ts'],
         },
       },
       {

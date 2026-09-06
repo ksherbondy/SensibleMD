@@ -2,9 +2,11 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron')
 const fs = require('node:fs/promises')
 const { watch } = require('node:fs')
 const path = require('node:path')
+const { createSessionId, deriveDocumentId } = require('./document-identity.cjs')
+const { archiveStateFromPreviousIdentityScheme } = require('./legacy-state.cjs')
 
 const isDevelopment = process.argv.includes('--dev')
-const authorizedDocumentPaths = new Map()
+const authorizedDocumentSessions = new Map()
 const authorizedDocumentWatchers = new Map()
 const recentFilesPath = () => path.join(app.getPath('userData'), 'recent-files.json')
 
@@ -52,13 +54,15 @@ async function rememberRecentFile(filePath) {
 
 async function openAuthorizedDocument(event, filePath) {
   authorizedDocumentWatchers.get(event.sender.id)?.close()
-  authorizedDocumentPaths.set(event.sender.id, filePath)
+  const documentId = await deriveDocumentId(filePath)
+  const sessionId = createSessionId()
+  authorizedDocumentSessions.set(event.sender.id, { sessionId, documentId, filePath })
   const watcher = watch(filePath, async () => {
     try { event.sender.send('document:external-change', { source: await fs.readFile(filePath, 'utf8') }) } catch {}
   })
   authorizedDocumentWatchers.set(event.sender.id, watcher)
   await rememberRecentFile(filePath)
-  return { name: path.basename(filePath), source: await fs.readFile(filePath, 'utf8') }
+  return { documentId, sessionId, name: path.basename(filePath), source: await fs.readFile(filePath, 'utf8') }
 }
 
 ipcMain.handle('document:open', async (event) => {
@@ -79,10 +83,10 @@ ipcMain.handle('recent:open', async (event, index) => {
 
 ipcMain.handle('document:save-opened', async (event, payload) => {
   if (!payload || typeof payload.source !== 'string') throw new Error('Invalid document save request')
-  const filePath = authorizedDocumentPaths.get(event.sender.id)
-  if (!filePath) throw new Error('No authorized document is open')
-  await writeTextAtomically(filePath, payload.source)
-  return { name: path.basename(filePath) }
+  const session = authorizedDocumentSessions.get(event.sender.id)
+  if (!session) throw new Error('No authorized document is open')
+  await writeTextAtomically(session.filePath, payload.source)
+  return { name: path.basename(session.filePath) }
 })
 
 ipcMain.handle('document:save-as', async (_event, payload) => {
@@ -149,7 +153,8 @@ function createWindow() {
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await archiveStateFromPreviousIdentityScheme(app.getPath('userData')).catch((error) => { console.error('Could not archive state from a previous identity scheme:', error) })
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -163,5 +168,5 @@ app.on('window-all-closed', () => {
 app.on('web-contents-destroyed', (_event, contents) => {
   authorizedDocumentWatchers.get(contents.id)?.close()
   authorizedDocumentWatchers.delete(contents.id)
-  authorizedDocumentPaths.delete(contents.id)
+  authorizedDocumentSessions.delete(contents.id)
 })

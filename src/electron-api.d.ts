@@ -10,12 +10,21 @@ interface SensibleDocumentState {
   reducedMotion: boolean
 }
 
+interface SensibleOpenedDocument {
+  /** Stable identity owned by the main process. */
+  documentId: string
+  /** Ephemeral identity for this open document in this window. Never persisted. */
+  sessionId: string
+  name: string
+  source: string
+}
+
 interface Window {
   sensibleMD?: {
     platform: string
-    openDocument: () => Promise<{ name: string; source: string } | null>
+    openDocument: () => Promise<SensibleOpenedDocument | null>
     listRecentDocuments: () => Promise<Array<{ index: number; name: string }>>
-    openRecentDocument: (index: number) => Promise<{ name: string; source: string } | null>
+    openRecentDocument: (index: number) => Promise<SensibleOpenedDocument | null>
     saveOpenedDocument: (payload: { source: string }) => Promise<{ name: string }>
     onExternalDocumentChange: (listener: (change: { source: string }) => void) => () => void
     saveDocumentAs: (payload: { name: string; source: string }) => Promise<{ name: string; path: string } | null>

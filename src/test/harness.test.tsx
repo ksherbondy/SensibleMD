@@ -54,7 +54,8 @@ describe('FakeDesktop', () => {
     desktop.openDialogResult = '/Users/reader/notes.md'
 
     const opened = await desktop.api.openDocument()
-    expect(opened).toEqual({ name: 'notes.md', source: '# Notes' })
+    expect(opened).toMatchObject({ name: 'notes.md', source: '# Notes', documentId: desktop.documentIdFor('/Users/reader/notes.md') })
+    expect(opened?.sessionId).toEqual(expect.any(String))
 
     await desktop.api.saveOpenedDocument({ source: '# Notes edited' })
     expect(desktop.diskContents('/Users/reader/notes.md')).toBe('# Notes edited')

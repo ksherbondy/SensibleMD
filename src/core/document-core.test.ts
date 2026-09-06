@@ -143,7 +143,7 @@ describe('semantic navigation history', () => {
 describe('document collections', () => {
   it('keeps each selected Markdown file as an independently addressable chapter', () => {
     const collection = createCollection([{ name: '01 Intro.md', source: '# Intro' }, { name: '02 Guide.md', source: '# Guide' }])
-    expect(collection.map((document) => document.id)).toEqual(['01-intro-md-0', '02-guide-md-1'])
+    expect(new Set(collection.map((document) => document.id)).size).toBe(2)
     expect(replaceCollectionDocument(collection, collection[1].id, '# Updated')[1].source).toBe('# Updated')
     expect(collection[0].source).toBe('# Intro')
     expect(adjacentCollectionDocument(collection, collection[0].id, 'next')?.name).toBe('02 Guide.md')

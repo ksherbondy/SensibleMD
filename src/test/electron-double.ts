@@ -1,3 +1,4 @@
+import { identityDigest } from '../core/identity'
 import { CallScheduler } from './scheduler'
 
 type SensibleAPI = NonNullable<Window['sensibleMD']>
@@ -28,6 +29,10 @@ export class FakeDesktop {
   readonly recoveryLatest = new Map<string, RecoveryRecord>()
   readonly recoveryPrevious = new Map<string, RecoveryRecord>()
   readonly documentState = new Map<string, SensibleDocumentState>()
+  readonly sessions: Array<{ sessionId: string; documentId: string; filePath: string }> = []
+  /** Every identifier the renderer has asked main to read or write, in order. */
+  readonly stateRequests: Array<{ operation: 'load' | 'save'; documentId: string }> = []
+  readonly recoveryRequests: Array<{ operation: 'load' | 'save'; documentId: string }> = []
   recents: string[] = []
   authorizedPath: string | null = null
   /** Path the next Open dialog returns. `null` models the user cancelling. */
@@ -56,6 +61,15 @@ export class FakeDesktop {
     return this.files.get(filePath) ?? null
   }
 
+  /**
+   * Path-derived identity, mirroring the main process. Symlink resolution is not
+   * modelled here; electron/document-identity.test.ts covers that against a real
+   * filesystem.
+   */
+  documentIdFor(filePath: string) {
+    return `doc-${identityDigest(filePath)}`
+  }
+
   /** Simulate an external editor writing the file and the watcher noticing. */
   emitExternalChange(source: string, filePath = this.authorizedPath) {
     if (filePath) this.files.set(filePath, source)
@@ -82,7 +96,9 @@ export class FakeDesktop {
     this.recents = [filePath, ...this.recents.filter((item) => item !== filePath)].slice(0, 12)
     const source = this.files.get(filePath)
     if (source === undefined) throw new Error(`ENOENT: ${filePath}`)
-    return { name: basename(filePath), source }
+    const sessionId = crypto.randomUUID()
+    this.sessions.push({ sessionId, documentId: this.documentIdFor(filePath), filePath })
+    return { documentId: this.documentIdFor(filePath), sessionId, name: basename(filePath), source }
   }
 
   private createApi(): SensibleAPI {
@@ -135,6 +151,7 @@ export class FakeDesktop {
     },
 
     saveRecoverySnapshot: (payload: { documentId: string; version: number; source: string }) => this.scheduler.schedule('recovery:save', () => {
+      this.recoveryRequests.push({ operation: 'save', documentId: payload.documentId })
       if (this.failures.recovery) throw new Error('Recovery snapshot could not be saved.')
       const existing = this.recoveryLatest.get(payload.documentId)
       if (existing) this.recoveryPrevious.set(payload.documentId, existing)
@@ -143,16 +160,19 @@ export class FakeDesktop {
     }),
 
     loadRecoverySnapshot: (documentId: string) => this.scheduler.schedule('recovery:load', () => {
+      this.recoveryRequests.push({ operation: 'load', documentId })
       if (this.failures.recovery) throw new Error('Recovery check is unavailable.')
       return this.recoveryLatest.get(documentId) ?? null
     }),
 
     loadDocumentState: (documentId: string) => this.scheduler.schedule('state:load', () => {
+      this.stateRequests.push({ operation: 'load', documentId })
       if (this.failures.state) throw new Error('Desktop settings are unavailable.')
       return this.documentState.get(documentId) ?? null
     }),
 
     saveDocumentState: (state: Omit<SensibleDocumentState, 'schemaVersion'>) => this.scheduler.schedule('state:save', () => {
+      this.stateRequests.push({ operation: 'save', documentId: state.documentId })
       if (this.failures.state) throw new Error('Desktop settings could not be saved.')
       const stored: SensibleDocumentState = { ...state, schemaVersion: 1 }
       this.documentState.set(state.documentId, stored)

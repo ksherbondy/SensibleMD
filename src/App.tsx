@@ -23,6 +23,7 @@ import { NavigationHistory, type NavigationReason } from './core/navigation-hist
 
 //Collections and search
 import { adjacentCollectionDocument, createCollection, replaceCollectionDocument, type CollectionDocument } from './core/document-collection'
+import { asDocumentId, asSessionId, browserDocumentId, WELCOME_DOCUMENT_ID, type DocumentId, type SessionId } from './core/identity'
 import { searchCollection, searchResultIndexAfter, type SearchScope } from './core/collection-search'
 
 //Reader utilities
@@ -38,7 +39,7 @@ import './App.css'
 type ViewMode = 'read' | 'write' | 'split'
 type ReadingMode = 'continuous' | 'single' | 'spread'
 type Heading = { id: string; level: number; text: string; line: number }
-type SearchOrigin = { documentId: string; headingId: string }
+type SearchOrigin = { documentId: DocumentId; headingId: string }
 type ReaderMemory = { bookmarks: string[]; activeHeading: string; position?: SemanticPosition }
 
 const starterDocument = `# A quieter way to read Markdown
@@ -73,6 +74,12 @@ function readerNodeId(nodeId: string) {
   return `reader-node-${nodeId}`
 }
 
+// The bundled sample and any document restored from browser storage share one fixed
+// identity; neither has a file behind it.
+function restoredDocument() {
+  return createCollection([{ id: WELCOME_DOCUMENT_ID, name: localStorage.getItem('sensiblemd-name') ?? 'Welcome.md', source: localStorage.getItem('sensiblemd-document') ?? starterDocument }])
+}
+
 function ReaderSurface({ source, headings, navigableNodes, mode, pages, pageIndex, onPageIndex, onInternalLink }: { source: string; headings: Heading[]; navigableNodes: SemanticNode[]; mode: ReadingMode; pages: BookPage[]; pageIndex: number; onPageIndex: (index: number) => void; onInternalLink: (href: string) => boolean }) {
   const navigationId = (type: string, offset: number | undefined) => {
     const node = navigableNodes.find((item) => item.type === type && item.range.start === offset)
@@ -91,8 +98,9 @@ function PreviewSurface({ source, headings }: { source: string; headings: Headin
 function App() {
   const [source, setSource] = useState(() => localStorage.getItem('sensiblemd-document') ?? starterDocument)
   const [documentName, setDocumentName] = useState(() => localStorage.getItem('sensiblemd-name') ?? 'Welcome.md')
-  const [collection, setCollection] = useState<CollectionDocument[]>(() => createCollection([{ name: localStorage.getItem('sensiblemd-name') ?? 'Welcome.md', source: localStorage.getItem('sensiblemd-document') ?? starterDocument }]))
-  const [activeDocumentId, setActiveDocumentId] = useState(() => createCollection([{ name: localStorage.getItem('sensiblemd-name') ?? 'Welcome.md', source: localStorage.getItem('sensiblemd-document') ?? starterDocument }])[0].id)
+  const [collection, setCollection] = useState<CollectionDocument[]>(restoredDocument)
+  const [activeDocumentId, setActiveDocumentId] = useState<DocumentId>(() => restoredDocument()[0].id)
+  const [activeSessionId, setActiveSessionId] = useState<SessionId | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [canSaveDirectly, setCanSaveDirectly] = useState(false)
   const [externalChange, setExternalChange] = useState<string | null>(null)
@@ -420,18 +428,19 @@ function App() {
     const file = event.target.files?.[0]
     if (!file) return
     const fileReader = new FileReader()
-    fileReader.onload = () => { const source = String(fileReader.result); const documents = createCollection([{ name: file.name, source }]); buffer.replace(source, 'programmatic'); buffer.markSaved(); setCollection(documents); setActiveDocumentId(documents[0].id); setSource(source); setDocumentName(file.name); setCanSaveDirectly(false); setIsDirty(false); setActiveHeading(''); setActiveNodeId(''); setView('read') }
+    fileReader.onload = () => { const source = String(fileReader.result); const documents = createCollection([{ id: browserDocumentId(file), name: file.name, source }]); buffer.replace(source, 'programmatic'); buffer.markSaved(); setCollection(documents); setActiveDocumentId(documents[0].id); setActiveSessionId(null); setSource(source); setDocumentName(file.name); setCanSaveDirectly(false); setIsDirty(false); setActiveHeading(''); setActiveNodeId(''); setView('read') }
     fileReader.readAsText(file)
     event.target.value = ''
   }
   const openCollection = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     if (!files.length) return
-    Promise.all(files.map((file) => file.text().then((source) => ({ name: file.name, source })))).then((filesWithSource) => {
+    Promise.all(files.map((file) => file.text().then((source) => ({ id: browserDocumentId(file), name: file.name, source })))).then((filesWithSource) => {
       const documents = createCollection(filesWithSource.sort((left, right) => left.name.localeCompare(right.name)))
       const active = documents[0]
       setCollection(documents)
       setActiveDocumentId(active.id)
+      setActiveSessionId(null)
       buffer.replace(active.source, 'programmatic')
       buffer.markSaved()
       setSource(active.source)
@@ -486,11 +495,12 @@ function App() {
     if (typeof openNativeDocument !== 'function') { fileInput.current?.click(); return }
     const file = await openNativeDocument().catch(() => { setAppStatus('The Markdown file could not be opened.'); return null })
     if (!file) return
-    const documents = createCollection([{ name: file.name, source: file.source }])
+    const documents = createCollection([{ id: asDocumentId(file.documentId), name: file.name, source: file.source }])
     buffer.replace(file.source, 'programmatic')
     buffer.markSaved()
     setCollection(documents)
     setActiveDocumentId(documents[0].id)
+    setActiveSessionId(asSessionId(file.sessionId))
     setSource(file.source)
     setDocumentName(file.name)
     setCanSaveDirectly(true)
@@ -505,11 +515,12 @@ function App() {
     if (typeof openRecent !== 'function') return
     const file = await openRecent(index).catch(() => { setAppStatus('The recent file could not be opened.'); return null })
     if (!file) { setAppStatus('That recent file is no longer available.'); return }
-    const documents = createCollection([{ name: file.name, source: file.source }])
+    const documents = createCollection([{ id: asDocumentId(file.documentId), name: file.name, source: file.source }])
     buffer.replace(file.source, 'programmatic')
     buffer.markSaved()
     setCollection(documents)
     setActiveDocumentId(documents[0].id)
+    setActiveSessionId(asSessionId(file.sessionId))
     setSource(file.source)
     setDocumentName(file.name)
     setCanSaveDirectly(true)
@@ -599,7 +610,7 @@ function App() {
   ]
 
   const preferences = normalizeReaderPreferences({ fontScale, lineHeight, contentWidth, reducedMotion })
-  return <div className={preferences.reducedMotion ? 'app-shell reduced-motion' : 'app-shell'} data-dirty={isDirty} style={{ '--reader-scale': `${preferences.fontScale}%`, '--reader-line-height': String(preferences.lineHeight), '--reader-width': `${preferences.contentWidth}px` } as React.CSSProperties}>
+  return <div className={preferences.reducedMotion ? 'app-shell reduced-motion' : 'app-shell'} data-dirty={isDirty} data-document-id={activeDocumentId} data-session-id={activeSessionId ?? ''} style={{ '--reader-scale': `${preferences.fontScale}%`, '--reader-line-height': String(preferences.lineHeight), '--reader-width': `${preferences.contentWidth}px` } as React.CSSProperties}>
     <header className="topbar"><div className="brand" aria-label="SensibleMD"><span className="brand-mark"><BookOpen size={20} /></span><span>SensibleMD</span></div><div className="document-title"><FileText size={16} /><span>{documentName}</span><span className="saved"><Check size={14} /> Saved locally</span></div><div className="topbar-actions"><button className="icon-button" type="button" onClick={openDocument} aria-label="Open Markdown file" title="Open Markdown file"><FolderOpen size={18} /></button><button className="icon-button" type="button" onClick={saveFile} aria-label="Save Markdown file" title="Save Markdown file"><Download size={18} /></button><button className="icon-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Reading settings" aria-expanded={settingsOpen} title="Reading settings"><Settings2 size={18} /></button><button className="icon-button" type="button" onClick={() => setCommandPaletteOpen(true)} aria-label="Show command palette" title="Show command palette (Cmd/Ctrl+K)"><Command size={18} /></button></div><input ref={fileInput} className="visually-hidden" type="file" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" onChange={openFile} /></header>
     <input ref={collectionInput} className="visually-hidden" type="file" multiple accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" onChange={openCollection} />
     {commandPaletteOpen && <Suspense fallback={null}><CommandPalette commands={commands} onClose={() => setCommandPaletteOpen(false)} /></Suspense>}

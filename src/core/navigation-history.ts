@@ -1,12 +1,16 @@
+import type { DocumentId } from './identity'
+
 export type NavigationReason = 'search' | 'outline' | 'bookmark' | 'link' | 'manual' | 'history'
-export interface NavigationEntry { documentId?: string; headingId: string; reason: NavigationReason }
+export interface NavigationEntry { documentId?: DocumentId; headingId: string; reason: NavigationReason }
 
 export class NavigationHistory {
   private entries: NavigationEntry[] = []
   private index = -1
 
   visit(entry: NavigationEntry) {
-    if (this.entries[this.index]?.headingId === entry.headingId) return
+    const current = this.entries[this.index]
+    // Heading ids are only unique within a document, so both parts must match.
+    if (current?.headingId === entry.headingId && current.documentId === entry.documentId) return
     this.entries = [...this.entries.slice(0, this.index + 1), entry]
     this.index = this.entries.length - 1
   }
