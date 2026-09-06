@@ -48,6 +48,19 @@ export function analyzeAccessibility(source: string): AccessibilityFinding[] {
     if (/\[[^\]]+\]\(\s*\)/.test(line)) findings.push(finding('LINK-002', 'error', 'high', 'Link destination is empty.', 'A link with no destination cannot take readers to the intended content.', 'Add a valid destination or remove the link.', lineNumber))
     if (/\[\s*(click here|here|more|read more|this)\s*\]\([^)]*\)/i.test(line)) findings.push(finding('LINK-003', 'warning', 'medium', 'Link text may not describe its destination.', 'Generic link text may be unclear when links are navigated out of surrounding context.', 'Use text that names the destination or action.', lineNumber))
     if (/^```\s*$/.test(line)) findings.push(finding('CODE-001', 'advisory', 'medium', 'Code block has no language identifier.', 'Language metadata can improve syntax highlighting and navigation context.', 'Add a language after the opening fence when it is known.', lineNumber))
+    if (/^\s*[-+*]\s*$/.test(line)) findings.push(finding('LIST-002', 'warning', 'high', 'List item is empty.', 'An empty list item can interrupt list navigation and does not communicate content.', 'Add item text or remove the empty list marker.', lineNumber))
+    if (/^(\s{4,}[-+*]\s+)/.test(line)) {
+      const depth = Math.floor((line.match(/^\s*/)?.[0].length ?? 0) / 2)
+      if (depth >= 4) findings.push(finding('LIST-001', 'advisory', 'medium', 'List nesting is unusually deep.', 'Deeply nested lists can be difficult to understand and navigate nonvisually.', 'Consider splitting the list into smaller sections or reducing nesting.', lineNumber))
+    }
+    if (/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)) {
+      const headerCells = (lines[index - 1] ?? '').trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim())
+      const headerLine = lineNumber - 1
+      if (headerCells.some((cell) => !cell)) findings.push(finding('TABLE-002', 'warning', 'high', 'Table has an empty header cell.', 'Readers need header text to understand the meaning of values in that column.', 'Add a concise label to every table header cell.', headerLine))
+      const normalizedHeaders = headerCells.filter(Boolean).map((cell) => cell.toLocaleLowerCase())
+      if (new Set(normalizedHeaders).size !== normalizedHeaders.length) findings.push(finding('TABLE-003', 'advisory', 'medium', 'Table contains duplicate header names.', 'Duplicate headers can make column context ambiguous when a table is read cell by cell.', 'Use distinct header labels where the columns represent different data.', headerLine))
+      if (headerCells.length > 6) findings.push(finding('TABLE-004', 'advisory', 'medium', 'Table is unusually wide.', 'Wide tables may be difficult to inspect with magnification or maintain context in a screen reader.', 'Consider splitting the information into simpler tables or sections.', headerLine))
+    }
   })
   return findings
 }

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { DocumentBuffer } from './document-buffer'
 import { parseSemanticDocument, searchDocument } from './semantic-document'
-import { pageIndexAfter, paginateDocument } from './pagination'
+import { pageIndexAfter, pageIndexForNode, paginateDocument } from './pagination'
 import { changeHeadingLevel } from './structural-commands'
 import { analyzeAccessibility } from './accessibility-diagnostics'
-import { adjacentHeading, bookmarkedHeadings } from './reader-navigation'
+import { adjacentHeading, adjacentNavigableNode, bookmarkedHeadings } from './reader-navigation'
 import { matchCommands, type CommandDefinition } from './commands'
 import { NavigationHistory } from './navigation-history'
 import { adjacentCollectionDocument, createCollection, replaceCollectionDocument } from './document-collection'
@@ -12,6 +12,8 @@ import { searchCollection, searchResultIndexAfter } from './collection-search'
 import { normalizeReaderPreferences } from './reader-preferences'
 import { summarizeSection } from './section-summary'
 import { resolveInternalMarkdownLink } from './internal-links'
+import { sourceForNode } from './reader-copy'
+import { createSemanticPosition, resolveSemanticPosition } from './semantic-position'
 
 describe('DocumentBuffer', () => {
   it('rejects transactions created against stale source', () => {
@@ -49,10 +51,26 @@ describe('pagination', () => {
     expect(pages[1].fragments.map((fragment) => fragment.source).join('\n\n')).toContain('## Second')
   })
 
+  it('keeps a heading with following content and fragments a long paragraph', () => {
+    const source = '# First\n\nOne two three four five six seven eight.\n\n## Second\n\nNine ten.'
+    const document = parseSemanticDocument(source, 1)
+    const pages = paginateDocument(document, 6)
+    expect(pages[0].fragments.some((fragment) => fragment.source.startsWith('# First'))).toBe(true)
+    expect(pages.flatMap((page) => page.fragments).filter((fragment) => fragment.nodeId === document.nodes[1].id)).toHaveLength(2)
+    expect(pages[1].fragments.some((fragment) => fragment.source.startsWith('## Second'))).toBe(false)
+  })
+
   it('keeps page turns within the current page map', () => {
     expect(pageIndexAfter(0, 3, 'previous')).toBe(0)
     expect(pageIndexAfter(0, 3, 'next', 2)).toBe(2)
     expect(pageIndexAfter(2, 3, 'next')).toBe(2)
+  })
+
+  it('finds the presentation page containing a semantic node', () => {
+    const document = parseSemanticDocument('# One\n\nFirst words.\n\n# Two\n\nSecond words.', 1)
+    const pages = paginateDocument(document, 4)
+    const secondHeading = document.headings[1]
+    expect(pageIndexForNode(pages, secondHeading.id)).toBe(1)
   })
 })
 
@@ -72,6 +90,12 @@ describe('accessibility diagnostics', () => {
     expect(findings.find((item) => item.ruleId === 'LINK-001')).toMatchObject({ severity: 'error', confidence: 'high', line: 3 })
     expect(findings.find((item) => item.ruleId === 'LINK-003')).toMatchObject({ severity: 'warning', confidence: 'medium' })
   })
+
+  it('finds empty list items and table header quality issues', () => {
+    const findings = analyzeAccessibility('# Data\n\n- Complete\n-\n\n| Name | | Name |\n| --- | --- | --- |\n| A | B | C |')
+    expect(findings.map((item) => item.ruleId)).toEqual(expect.arrayContaining(['LIST-002', 'TABLE-002', 'TABLE-003']))
+    expect(findings.find((item) => item.ruleId === 'TABLE-002')).toMatchObject({ line: 6, severity: 'warning' })
+  })
 })
 
 describe('reader navigation', () => {
@@ -81,6 +105,15 @@ describe('reader navigation', () => {
     expect(adjacentHeading(headings, headings[1].id, 'next')).toBeNull()
     expect(adjacentHeading(headings, '', 'previous')?.text).toBe('Second')
     expect(bookmarkedHeadings(headings, [headings[1].id]).map((heading) => heading.text)).toEqual(['Second'])
+  })
+
+  it('traverses source-ordered reader node types without changing source blocks', () => {
+    const document = parseSemanticDocument('# First\n\nParagraph.\n\n[Guide](guide.md)\n\n![Diagram](diagram.png)\n\n```ts\nconst value = 1\n```', 1)
+    const paragraph = adjacentNavigableNode(document.navigableNodes, '', 'paragraph', 'next')
+    expect(paragraph?.text).toBe('Paragraph.')
+    expect(adjacentNavigableNode(document.navigableNodes, paragraph?.id ?? '', 'link', 'next')?.text).toBe('Guide')
+    expect(adjacentNavigableNode(document.navigableNodes, '', 'image', 'next')?.text).toBe('Diagram')
+    expect(adjacentNavigableNode(document.navigableNodes, '', 'code', 'next')?.text).toContain('const value')
   })
 })
 
@@ -123,6 +156,7 @@ describe('collection search', () => {
     const collection = createCollection([{ name: 'Intro.md', source: '# Intro\n\nFind this.' }, { name: 'Guide.md', source: '# Guide\n\nFind that.' }])
     expect(searchCollection(collection, collection[0].id, 'find', 'document')).toHaveLength(1)
     expect(searchCollection(collection, collection[0].id, 'find', 'collection')).toEqual(expect.arrayContaining([expect.objectContaining({ documentName: 'Guide.md', section: 'Guide' })]))
+    expect(searchCollection(collection, collection[0].id, 'intro', 'headings')[0]).toMatchObject({ nodeType: 'heading' })
   })
 
   it('cycles result selection predictably without invalid indexes', () => {
@@ -154,5 +188,41 @@ describe('internal Markdown links', () => {
     expect(resolveInternalMarkdownLink(collection, collection[0].id, 'guide.md#install-guide')).toMatchObject({ documentId: collection[1].id })
     expect(resolveInternalMarkdownLink(collection, collection[0].id, 'https://example.com')).toBeNull()
     expect(resolveInternalMarkdownLink(collection, collection[0].id, '#intro')).toMatchObject({ documentId: collection[0].id })
+  })
+})
+
+describe('reader copy', () => {
+  it('copies a complete semantic source range rather than a rendered fragment', () => {
+    const document = parseSemanticDocument('# Title\n\nParagraph with **formatting**.\n\n```ts\nconst value = 1\n```', 1)
+    expect(sourceForNode(document, document.navigableNodes.find((node) => node.type === 'paragraph'))).toBe('Paragraph with **formatting**.')
+    expect(sourceForNode(document, document.navigableNodes.find((node) => node.type === 'code'))).toContain('const value = 1')
+  })
+})
+
+describe('semantic positions', () => {
+  it('restores an exact node and recovers by fingerprint after nearby source changes', () => {
+    const original = parseSemanticDocument('# Title\n\nKeep this paragraph.\n\n## Next\n\nOther text.', 1)
+    const paragraph = original.navigableNodes.find((node) => node.type === 'paragraph')
+    const position = createSemanticPosition(original, paragraph?.id ?? '')
+    expect(resolveSemanticPosition(original, position)).toMatchObject({ confidence: 'exact', strategy: 'node-id' })
+    const edited = parseSemanticDocument('# Title\n\nNew paragraph first.\n\nKeep this paragraph.\n\n## Next\n\nOther text.', 2)
+    expect(resolveSemanticPosition(edited, position)).toMatchObject({ confidence: 'high', strategy: 'node-fingerprint', node: expect.objectContaining({ text: 'Keep this paragraph.' }) })
+  })
+
+  it('prefers the saved section for duplicate paragraphs and falls back to it after deletion', () => {
+    const original = parseSemanticDocument('# First\n\nRepeated text.\n\n# Second\n\nRepeated text.', 1)
+    const target = original.navigableNodes.filter((node) => node.type === 'paragraph')[1]
+    const position = createSemanticPosition(original, target.id)
+    const moved = parseSemanticDocument('# First\n\nRepeated text.\n\n# Second\n\nOther text.\n\nRepeated text.', 2)
+    expect(resolveSemanticPosition(moved, position)).toMatchObject({ confidence: 'high', node: expect.objectContaining({ range: expect.objectContaining({ line: 9 }) }) })
+    const deleted = parseSemanticDocument('# First\n\nRepeated text.\n\n# Second\n\nOther text.', 3)
+    expect(resolveSemanticPosition(deleted, position)).toMatchObject({ strategy: 'section-heading', node: expect.objectContaining({ text: 'Second' }) })
+  })
+
+  it('uses a text anchor when a paragraph is lightly edited', () => {
+    const original = parseSemanticDocument('# Setup\n\nInstall the package with npm.', 1)
+    const position = createSemanticPosition(original, original.navigableNodes.find((node) => node.type === 'paragraph')?.id ?? '')
+    const edited = parseSemanticDocument('# Setup\n\nInstall the package with npm today.', 2)
+    expect(resolveSemanticPosition(edited, position)).toMatchObject({ strategy: 'text-anchor', confidence: 'medium' })
   })
 })

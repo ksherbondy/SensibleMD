@@ -1,0 +1,11 @@
+[
+  { "id": "BASE-001", "file": "baseline/basic.md", "purpose": "Common Markdown reader smoke test", "expectedHeadings": 2 },
+  { "id": "BASE-003", "file": "baseline/empty.md", "purpose": "Empty document remains safe", "expectedHeadings": 0 },
+  { "id": "SEM-HEAD-002", "file": "semantic/skipped-headings.md", "purpose": "Heading hierarchy diagnostics", "expectedHeadings": 3 },
+  { "id": "NAV-BOOK-001", "file": "navigation/chapter-01.md", "purpose": "Cross-chapter anchor navigation", "expectedHeadings": 1 },
+  { "id": "AUTH-001", "file": "accessibility/authoring-errors.md", "purpose": "Accessible authoring diagnostics", "expectedHeadings": 2 },
+  { "id": "AUTH-TABLE-LIST-001", "file": "accessibility/table-list-errors.md", "purpose": "Table and list authoring diagnostics", "expectedHeadings": 1 },
+  { "id": "SEC-MD-001", "file": "security/hostile-markdown.md", "purpose": "Hostile HTML and URI rendering boundary", "expectedHeadings": 1 },
+  { "id": "MALFORMED-001", "file": "malformed/odd-markdown.md", "purpose": "Malformed and deeply nested Markdown resilience", "expectedHeadings": 1 },
+  { "id": "PERF-001", "file": "performance/repeated-content.md", "purpose": "Search and pagination regression", "expectedHeadings": 6 }
+]
