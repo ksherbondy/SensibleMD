@@ -32,6 +32,14 @@
       "electron/**/*",
       "package.json"
     ],
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown Document",
+        "role": "Editor",
+        "rank": "Default"
+      }
+    ],
     "mac": {
       "target": "dmg",
       "icon": "src/assets/icons/icon.icns"
