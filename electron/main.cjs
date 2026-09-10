@@ -169,7 +169,16 @@ function createWindow() {
   if (url.startsWith('https:')) {
     shell.openExternal(url)
   }
+  })
+
+  window.webContents.session.setPermissionCheckHandler(() => {
+  return false
 })
+
+  window.webContents.session.setPermissionRequestHandler(
+  (_webContents, _permission, callback) => {
+    callback(false)
+  })
 
   if (isDevelopment) window.loadURL('http://127.0.0.1:5175')
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))

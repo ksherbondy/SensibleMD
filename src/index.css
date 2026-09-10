@@ -1,4 +1,64 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap');
+@font-face {
+  font-family: 'DM Mono';
+  src: url('./assets/fonts/DM_Mono/DMMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  src: url('./assets/fonts/DM_Mono/DMMono-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  src: url('./assets/fonts/Fraunces/static/Fraunces_72pt_Soft-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  src: url('./assets/fonts/Fraunces/static/Fraunces_72pt_Soft-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('./assets/fonts/Manrope/static/Manrope-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('./assets/fonts/Manrope/static/Manrope-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('./assets/fonts/Manrope/static/Manrope-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('./assets/fonts/Manrope/static/Manrope-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+
+
+
+
+/*@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap');*/
 :root { --canvas: #f7f8f4; --ink: #253c33; --line: #d7e0d6; --sans: 'Manrope', sans-serif; --display: 'Fraunces', Georgia, serif; --mono: 'DM Mono', monospace; font-family: var(--sans); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; } * { box-sizing: border-box; } body { margin: 0; min-width: 320px; min-height: 100svh; } button, input, textarea { font: inherit; } button { -webkit-tap-highlight-color: transparent; }
 .search-results { position: absolute; z-index: 4; top: 51px; right: 84px; width: min(430px, calc(100% - 30px)); max-height: 360px; overflow-y: auto; border: 1px solid #cbd8cd; border-top: 0; background: #fffdf8; box-shadow: 0 9px 24px #203b2a2b; padding: 10px; }.search-results > span { display: block; color: #667b70; font-size: 12px; padding: 4px 5px 9px; }.search-results button { display: grid; grid-template-columns: 1fr auto; width: 100%; border: 0; border-radius: 3px; background: transparent; padding: 8px; text-align: left; cursor: pointer; color: #30483d; }.search-results button:hover { background: #ebf2eb; }.search-results strong { font-size: 12px; color: #1b5b49; }.search-results button span { grid-column: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }.search-results small { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #71847a; font-size: 11px; }.markdown-editor { min-width: 0; min-height: 0; overflow: hidden; background: #fffdf8; }.markdown-editor .cm-editor { height: 100%; min-height: 0; font: 14px/1.65 var(--mono); color: #263d34; }.markdown-editor .cm-scroller { overflow: auto; padding: 26px 20px; }.markdown-editor .cm-focused { outline: 0; }.markdown-editor .cm-gutters { background: #f5f7f3; border-right: 1px solid var(--line); color: #799085; }
 .layout-switch { margin-left: -6px; }.layout-switch button { padding-inline: 8px; }.book-reader { min-height: 0; display: flex; flex: 1; flex-direction: column; padding: 32px 28px 18px; background: #ecefe8; overflow: auto; }.book-pages { display: grid; grid-template-columns: minmax(0, 680px); justify-content: center; gap: 18px; flex: 1; }.book-reader.spread .book-pages { grid-template-columns: repeat(2, minmax(0, 540px)); }.book-page { min-height: 620px; padding: 48px 52px 36px; background: #fffdf8; box-shadow: 0 2px 8px #3046351b; color: #34443d; font-size: var(--reader-scale); line-height: 1.65; overflow-wrap: break-word; }.book-page h1, .book-page h2, .book-page h3 { font-family: var(--display); color: #153b31; line-height: 1.15; }.book-page h1 { font-size: 2em; }.book-page h2 { font-size: 1.45em; }.book-page h3 { font-size: 1.15em; }.book-page p { margin-block: 0 1em; }.book-page a { color: #0c6755; }.book-page img { max-width: 100%; height: auto; }.book-page footer { margin-top: 40px; border-top: 1px solid #d9e0d7; padding-top: 12px; text-align: center; color: #7a8b80; font: 11px var(--sans); }.page-controls { display: flex; align-items: center; justify-content: center; gap: 18px; padding-top: 15px; color: #557066; font-size: 12px; }.page-controls .icon-button { background: #fffdf8; border: 1px solid #d0dbd2; }.page-controls .icon-button:disabled { opacity: .4; cursor: default; } @media (max-width: 900px) { .book-reader.spread .book-pages { grid-template-columns: minmax(0, 680px); } } @media (max-width: 720px) { .layout-switch { display: none; }.book-reader { padding: 16px 10px; }.book-page { min-height: 520px; padding: 30px 25px; } }
