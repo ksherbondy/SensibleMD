@@ -928,8 +928,17 @@ function DocumentWorkspace({
     };
   }, [commandPaletteOpen, settingsOpen, searchOpen]);
 
+  const keyboardSave = useRef<(() => void) | null>(null);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() === "s" && event.metaKey !== event.ctrlKey &&
+        !event.shiftKey && !event.altKey && !event.isComposing && !event.defaultPrevented
+      ) {
+        event.preventDefault();
+        if (!event.repeat) keyboardSave.current?.();
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "e") {
         event.preventDefault();
         setView((current) => (current === "read" ? "write" : "read"));
@@ -1576,6 +1585,8 @@ function DocumentWorkspace({
     URL.revokeObjectURL(url);
     setAppStatus("Download requested. The original file is unchanged.");
   };
+  // Keep the existing listener connected to the latest committed save lifecycle.
+  useLayoutEffect(() => { keyboardSave.current = saveFile; });
   const closeDocument = async (completed = onClose): Promise<boolean> => {
     if (isDirty || buffer.snapshot().isDirty) {
       setAppStatus("Save your changes before closing this document.");
