@@ -7,18 +7,43 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-ssr
+out
+release
+
+# Test / coverage output
+coverage
+.nyc_output
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local files
 *.local
+*.tmp
+*.temp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Local AI research / scratch output
+ai-briefs/

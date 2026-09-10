@@ -22,6 +22,9 @@ interface SensibleOpenedDocument {
 interface Window {
   sensibleMD?: {
     platform: string
+    onOsOpenRequest?: (listener: (request: { id: string; name: string }) => void) => () => void
+    openOsDocument?: (id: string) => Promise<SensibleOpenedDocument>
+    completeOsOpen?: (id: string) => void
     openDocument: () => Promise<SensibleOpenedDocument | null>
     listRecentDocuments: () => Promise<Array<{ index: number; name: string }>>
     openRecentDocument: (index: number) => Promise<SensibleOpenedDocument | null>

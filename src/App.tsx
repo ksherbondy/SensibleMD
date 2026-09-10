@@ -1,6 +1,11 @@
+import { NoDocument, type OpenedReaderDocument } from './components/NoDocument'
+import { rehypeBookPage } from './core/page-render'
+import { usePageStep } from './core/use-page-step'
+import { useNavigationWork } from './core/use-navigation-work'
+import { useReadingObservation } from './core/use-reading-observation'
 //Framework and third-party packages
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { type ReactNode, createContext, createElement, lazy, Suspense, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 import { Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, Command, Download, FileText, FolderOpen, Search, Settings2, Sparkles, X } from 'lucide-react'
@@ -10,9 +15,10 @@ const MarkdownEditor = lazy(() => import('./components/MarkdownEditor').then((mo
 const CommandPalette = lazy(() => import('./components/CommandPalette').then((module) => ({ default: module.CommandPalette })))
 
 //Core document model
+import { locationForPage, pageForLocation, type NavigationAnchor } from './core/navigation-location'
 import { DocumentBuffer } from './core/document-buffer'
 import { parseSemanticDocument, type SemanticNode } from './core/semantic-document'
-import { pageIndexAfter, pageIndexForNode, pageSource, paginateDocument, type BookPage } from './core/pagination'
+import { pageIndexAfter, paginateDocument, type BookPage } from './core/pagination'
 
 //Core commands and navigation
 import { changeHeadingLevel } from './core/structural-commands'
@@ -42,7 +48,7 @@ type Heading = { id: string; level: number; text: string; line: number }
 type SearchOrigin = { documentId: DocumentId; headingId: string }
 type ReaderMemory = { bookmarks: string[]; activeHeading: string; position?: SemanticPosition }
 
-const starterDocument = `# A quieter way to read Markdown
+export const starterDocument = `# A quieter way to read Markdown
 
 SensibleMD is a focused reader and authoring space for documents that deserve attention.
 
@@ -66,9 +72,27 @@ Good Markdown has a useful heading hierarchy, clear links, and meaningful image 
 
 This is an editable sample. Try changing a heading, adding a paragraph, or opening your own file.`
 
-function headingId(text: string, line: number) {
-  return `heading-${line}-${text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`
-}
+// Parser positions, rather than displayed text, distinguish duplicate/formatted headings.
+const ReaderNodeContext = createContext<SemanticNode[]>([])
+const readerBlockComponents: Components = Object.fromEntries(([[ 'p', 'paragraph'], ['pre', 'code'], ['blockquote', 'blockquote'], ['table', 'table'], ['ul', 'list'], ['ol', 'list']] as const).map(([tag, type]) => [tag, function ReaderBlock({ node, children }: ExtraProps & { children?: ReactNode }) {
+    const nodes = useContext(ReaderNodeContext)
+    const target = nodes.find((item) => item.type === type && item.range.start === node?.position?.start.offset)
+    return createElement(tag, { id: target ? readerNodeId(target.id) : undefined }, children)
+  }]))
+const HeadingContext = createContext<Heading[]>([])
+const semanticHeadingComponents: Components = (() => {
+  const components: Components = {}
+  for (const tag of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const) {
+    components[tag] = function SemanticHeading({ node, children, ...props }) {
+      const headings = useContext(HeadingContext)
+      return createElement(tag, {
+        ...props,
+        id: headings.find((heading) => heading.line === node?.position?.start.line)?.id ?? props.id,
+      }, children)
+    }
+  }
+  return components
+})()
 
 function readerNodeId(nodeId: string) {
   return `reader-node-${nodeId}`
@@ -80,33 +104,48 @@ function restoredDocument() {
   return createCollection([{ id: WELCOME_DOCUMENT_ID, name: localStorage.getItem('sensiblemd-name') ?? 'Welcome.md', source: localStorage.getItem('sensiblemd-document') ?? starterDocument }])
 }
 
-function ReaderSurface({ source, headings, navigableNodes, mode, pages, pageIndex, onPageIndex, onInternalLink }: { source: string; headings: Heading[]; navigableNodes: SemanticNode[]; mode: ReadingMode; pages: BookPage[]; pageIndex: number; onPageIndex: (index: number) => void; onInternalLink: (href: string) => boolean }) {
+function ReaderSurface({ source, headings, navigableNodes, blocks, mode, pages, pageIndex, pageStep, onPageIndex, onInternalLink }: { source: string; headings: Heading[]; navigableNodes: SemanticNode[]; blocks: SemanticNode[]; pageStep: number; mode: ReadingMode; pages: BookPage[]; pageIndex: number; onPageIndex: (index: number) => void; onInternalLink: (href: string) => boolean }) {
   const navigationId = (type: string, offset: number | undefined) => {
     const node = navigableNodes.find((item) => item.type === type && item.range.start === offset)
     return node ? readerNodeId(node.id) : undefined
   }
-  const renderMarkdown = (markdown: string) => <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={{ a: ({ href, children, node }) => <a id={navigationId('link', node?.position?.start.offset)} href={href} target="_blank" rel="noreferrer" onClick={(event) => { if (href && onInternalLink(href)) event.preventDefault() }}>{children}</a>, img: ({ node, ...props }) => <img id={navigationId('image', node?.position?.start.offset)} {...props} />, p: ({ node, children }) => <p id={navigationId('paragraph', node?.position?.start.offset)}>{children}</p>, ul: ({ node, children }) => <ul id={navigationId('list', node?.position?.start.offset)}>{children}</ul>, ol: ({ node, children }) => <ol id={navigationId('list', node?.position?.start.offset)}>{children}</ol>, table: ({ node, children }) => <table id={navigationId('table', node?.position?.start.offset)}>{children}</table>, pre: ({ node, children }) => <pre id={navigationId('code', node?.position?.start.offset)}>{children}</pre>, blockquote: ({ node, children }) => <blockquote id={navigationId('blockquote', node?.position?.start.offset)}>{children}</blockquote>, h1: ({ children }) => <h1 id={headingId(String(children), headings.find((item) => item.text === String(children))?.line ?? 0)}>{children}</h1>, h2: ({ children }) => <h2 id={headingId(String(children), headings.find((item) => item.text === String(children))?.line ?? 0)}>{children}</h2>, h3: ({ children }) => <h3 id={headingId(String(children), headings.find((item) => item.text === String(children))?.line ?? 0)}>{children}</h3> }}>{markdown}</ReactMarkdown>
-  if (mode === 'continuous') return <article className="document-reader">{renderMarkdown(source)}</article>
-  const visiblePages = pages.slice(pageIndex, pageIndex + (mode === 'spread' ? 2 : 1))
-  return <section className={`book-reader ${mode}`} aria-label={`${mode === 'spread' ? 'Two-page' : 'Single-page'} reading mode`}><div className="book-pages">{visiblePages.map((page) => <article className="book-page" key={page.pageNumber} aria-label={`Page ${page.pageNumber}`}>{renderMarkdown(pageSource(page))}<footer>Page {page.pageNumber}</footer></article>)}</div><div className="page-controls"><button type="button" className="icon-button" onClick={() => onPageIndex(Math.max(0, pageIndex - (mode === 'spread' ? 2 : 1)))} disabled={pageIndex === 0} aria-label="Previous page"><ChevronLeft size={18} /></button><span>Page {pageIndex + 1} of {pages.length}</span><button type="button" className="icon-button" onClick={() => onPageIndex(Math.min(Math.max(0, pages.length - 1), pageIndex + (mode === 'spread' ? 2 : 1)))} disabled={pageIndex >= pages.length - 1} aria-label="Next page"><ChevronRight size={18} /></button></div></section>
+  const renderMarkdown = (page?: BookPage) => <ReaderNodeContext.Provider value={navigableNodes}><HeadingContext.Provider value={headings}><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={page ? [rehypeSanitize, [rehypeBookPage, { ranges: blocks.filter((block) => page.fragments.some((fragment) => fragment.nodeId === block.id)).map((block) => block.range), lastPage: page.pageNumber === pages.length }]] : [rehypeSanitize]} components={{ a: ({ href, children, node, ...props }) => <a {...props} id={navigationId('link', node?.position?.start.offset) ?? props.id} href={href} target={href?.startsWith('#') ? undefined : '_blank'} rel="noreferrer" onClick={(event) => { if (href && onInternalLink(href)) event.preventDefault() }}>{children}</a>, img: ({ node, ...props }) => <img id={navigationId('image', node?.position?.start.offset)} {...props} />, ...readerBlockComponents, ...semanticHeadingComponents }}>{source}</ReactMarkdown></HeadingContext.Provider></ReaderNodeContext.Provider>
+  if (mode === 'continuous') return <article className="document-reader">{renderMarkdown()}</article>
+  const visiblePages = pages.slice(pageIndex, pageIndex + pageStep)
+  return <section className={`book-reader ${mode}`} data-columns={pageStep} aria-label={`${mode === 'spread' ? 'Two-page' : 'Single-page'} reading mode`}><div className="book-pages">{!pages.length && <p>No readable content.</p>}{visiblePages.map((page) => <article className="book-page" tabIndex={0} key={page.pageNumber} aria-label={`Page ${page.pageNumber}`}>{renderMarkdown(page)}<footer>Page {page.pageNumber}</footer></article>)}</div><div className="page-controls"><button type="button" className="icon-button" onClick={() => onPageIndex(Math.max(0, pageIndex - pageStep))} disabled={pageIndex === 0} aria-label="Previous page"><ChevronLeft size={18} /></button><span>Page {pages.length ? pageIndex + 1 : 0} of {pages.length}</span><button type="button" className="icon-button" onClick={() => onPageIndex(Math.min(Math.max(0, pages.length - 1), pageIndex + pageStep))} disabled={pageIndex + pageStep >= pages.length} aria-label="Next page"><ChevronRight size={18} /></button></div></section>
 }
 
 function PreviewSurface({ source, headings }: { source: string; headings: Heading[] }) {
-  return <article className="authoring-preview" aria-label="Rendered Markdown preview"><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={{ h1: ({ children }) => <h1 id={headingId(String(children), headings.find((item) => item.text === String(children))?.line ?? 0)}>{children}</h1>, h2: ({ children }) => <h2 id={headingId(String(children), headings.find((item) => item.text === String(children))?.line ?? 0)}>{children}</h2>, h3: ({ children }) => <h3 id={headingId(String(children), headings.find((item) => item.text === String(children))?.line ?? 0)}>{children}</h3> }}>{source}</ReactMarkdown></article>
+  return <article className="authoring-preview" aria-label="Rendered Markdown preview"><HeadingContext.Provider value={headings}><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={semanticHeadingComponents}>{source}</ReactMarkdown></HeadingContext.Provider></article>
 }
 
-function App() {
-  const [source, setSource] = useState(() => localStorage.getItem('sensiblemd-document') ?? starterDocument)
-  const [documentName, setDocumentName] = useState(() => localStorage.getItem('sensiblemd-name') ?? 'Welcome.md')
-  const [collection, setCollection] = useState<CollectionDocument[]>(restoredDocument)
-  const [activeDocumentId, setActiveDocumentId] = useState<DocumentId>(() => restoredDocument()[0].id)
-  const [activeSessionId, setActiveSessionId] = useState<SessionId | null>(null)
+function DocumentWorkspace({ initialDocument, onClose, prepareOpen }: { initialDocument?: OpenedReaderDocument; onClose: () => void; prepareOpen: React.RefObject<(() => Promise<boolean>) | null> }) {
+  const initialCollection = () => initialDocument ? createCollection([initialDocument]) : restoredDocument()
+  const initialMemory: ReaderMemory | undefined = initialDocument && JSON.parse(localStorage.getItem('sensiblemd-reader-memory') ?? '{}')[initialDocument.id]
+  const [closing, setClosing] = useState(false)
+  const closingRef = useRef(false)
+  const pendingSaves = useRef(new Set<Promise<unknown>>())
+  const pendingReaderWrites = useRef(new Set<Promise<unknown>>())
+  const [readerStateReady, setReaderStateReady] = useState(false)
+  const trackSave = (promise: Promise<unknown>) => {
+    pendingSaves.current.add(promise)
+    void promise.finally(() => pendingSaves.current.delete(promise))
+  }
+  const [source, setSource] = useState(() => initialDocument?.source ?? localStorage.getItem('sensiblemd-document') ?? starterDocument)
+  const [documentName, setDocumentName] = useState(() => initialDocument?.name ?? localStorage.getItem('sensiblemd-name') ?? 'Welcome.md')
+  const [collection, setCollection] = useState<CollectionDocument[]>(initialCollection)
+  const [activeDocumentId, setActiveDocumentId] = useState<DocumentId>(() => initialCollection()[0].id)
+  const [activeSessionId, setActiveSessionId] = useState<SessionId | null>(initialDocument?.sessionId ?? null)
   const [isDirty, setIsDirty] = useState(false)
-  const [canSaveDirectly, setCanSaveDirectly] = useState(false)
+  const [canSaveDirectly, setCanSaveDirectly] = useState(initialDocument?.canSaveDirectly ?? false)
   const [externalChange, setExternalChange] = useState<string | null>(null)
   const [sectionSummaryOpen, setSectionSummaryOpen] = useState(false)
   const [view, setView] = useState<ViewMode>('read')
   const [query, setQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [commandQuery, setCommandQuery] = useState('')
+  const settingsPanel = useRef<HTMLElement>(null)
+  const settingsTrigger = useRef<HTMLButtonElement>(null)
   const [searchScope, setSearchScope] = useState<SearchScope>('document')
   const [searchIndex, setSearchIndex] = useState(-1)
   const [searchOrigin, setSearchOrigin] = useState<SearchOrigin | null>(null)
@@ -117,14 +156,18 @@ function App() {
   const [contentWidth, setContentWidth] = useState(() => Number(localStorage.getItem('sensiblemd-content-width')) || defaultReaderPreferences.contentWidth)
   const [reducedMotion, setReducedMotion] = useState(() => localStorage.getItem('sensiblemd-reduced-motion') === 'true')
   const [readingMode, setReadingMode] = useState<ReadingMode>(() => { const saved = localStorage.getItem('sensiblemd-reading-mode'); return saved === 'single' || saved === 'spread' ? saved : 'continuous' })
-  const [pageIndex, setPageIndex] = useState(0)
     const [editorLine, setEditorLine] = useState(1)
-  const [diagnosticLine, setDiagnosticLine] = useState<number | null>(null)
+  const [diagnosticJump, setDiagnosticJump] = useState<{ line: number; isCurrent: () => boolean } | null>(null)
   const [bookmarksOpen, setBookmarksOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [bookmarks, setBookmarks] = useState<string[]>(() => JSON.parse(localStorage.getItem('sensiblemd-bookmarks') ?? '[]'))
-  const [activeHeading, setActiveHeading] = useState(() => localStorage.getItem('sensiblemd-position') ?? '')
-  const [activeNodeId, setActiveNodeId] = useState('')
+  const [bookmarks, setBookmarks] = useState<string[]>(() => initialDocument ? initialMemory?.bookmarks ?? [] : JSON.parse(localStorage.getItem('sensiblemd-bookmarks') ?? '[]'))
+  const [navigationAnchor, setNavigationAnchor] = useState<NavigationAnchor>(() => ({ nodeId: initialDocument ? initialMemory?.activeHeading ?? '' : localStorage.getItem('sensiblemd-position') ?? '', wordOffset: 0 }))
+  const navigationWork = useNavigationWork(activeDocumentId, source)
+  const queueNavigation = (callback: () => void, documentId = activeDocumentId, targetSource = source) => navigationWork.schedule(callback, { documentId, source: targetSource })
+  const [outlineJump, setOutlineJump] = useState<{ line: number; isCurrent: () => boolean } | null>(null)
+  const [observationRevision, setObservationRevision] = useState(0)
+  const setNavigationNode = (nodeId: string) => { navigationWork.invalidate(); setObservationRevision((revision) => revision + 1); setNavigationAnchor({ nodeId, wordOffset: 0 }); setOutlineJump(null) }
+  const activeNodeId = navigationAnchor.nodeId
   const [copyStatus, setCopyStatus] = useState('')
   const [appStatus, setAppStatus] = useState('')
   const [recoverySnapshot, setRecoverySnapshot] = useState<{ source: string; savedAt: string } | null>(null)
@@ -138,13 +181,24 @@ function App() {
   if (bufferRef.current === null) bufferRef.current = new DocumentBuffer('active-document', source)
   const buffer = bufferRef.current
   const semanticDocument = parseSemanticDocument(source, buffer.snapshot().version)
+  const activeNode = semanticDocument.navigableNodes.find((node) => node.id === activeNodeId)
+  const activeHeading = activeNode ? [...semanticDocument.headings].reverse().find((heading) => heading.range.start <= activeNode.range.start)?.id ?? '' : ''
   const headings: Heading[] = semanticDocument.headings.map((heading) => ({ ...heading, line: heading.range.line }))
+  const observeNode = (nodeId: string) => { setNavigationAnchor((current) => current.nodeId === nodeId ? current : { nodeId, wordOffset: 0 }) }
+  useReadingObservation({ documentId: activeDocumentId, source, enabled: view === 'read' && readingMode === 'continuous', revision: observationRevision, onObserve: observeNode, work: navigationWork })
+  const observeEditorCursor = (offset: number, observedSource: string) => {
+    if (observedSource !== source || view === 'read') return
+    const node = [...semanticDocument.nodes].reverse().find((item) => item.range.start <= offset)
+    if (node) { navigationWork.interruptCurrentContext(); observeNode(node.id) }
+  }
   const allFindings = analyzeAccessibility(source)
   const findings = findingFilter === 'all' ? allFindings : allFindings.filter((finding) => finding.severity === findingFilter)
   const wordCount = semanticDocument.wordCount
   const searchResults = searchCollection(collection, activeDocumentId, query, searchScope)
   const matches = searchResults.reduce((total, result) => total + result.occurrences, 0)
   const pages = paginateDocument(semanticDocument, readingMode === 'spread' ? 52 : 76)
+  const pageStep = usePageStep(readingMode === 'spread')
+  const pageIndex = Math.floor(pageForLocation(pages, navigationAnchor) / pageStep) * pageStep
   const chapterIndex = collection.findIndex((document) => document.id === activeDocumentId)
   const collectionWordCount = collection.reduce((total, document) => total + parseSemanticDocument(document.source, 0).wordCount, 0)
   const savedHeadings = bookmarkedHeadings(semanticDocument.headings, bookmarks).map((heading) => headings.find((item) => item.id === heading.id)).filter((heading): heading is Heading => Boolean(heading))
@@ -185,38 +239,43 @@ function App() {
     if (!remembered) return
     const resolved = resolveSemanticPosition(semanticDocument, remembered)
     if (!resolved.node) return
-    const owningHeading = [...semanticDocument.headings].reverse().find((heading) => heading.range.start <= resolved.node!.range.start)
-    setActiveNodeId(resolved.node.id)
-    setActiveHeading(owningHeading?.id ?? '')
-    requestAnimationFrame(() => document.getElementById(readerNodeId(resolved.node!.id))?.scrollIntoView({ behavior: 'auto', block: 'center' }))
+    setNavigationNode(resolved.node.id)
+    queueNavigation(() => document.getElementById(readerNodeId(resolved.node!.id))?.scrollIntoView({ behavior: 'auto', block: 'center' }))
   }, [])
 
   useEffect(() => {
     const loadState = window.sensibleMD?.loadDocumentState
-    if (typeof loadState !== 'function') return
+    if (typeof loadState !== 'function') { setReaderStateReady(true); return }
+    let current = true
+    setReaderStateReady(false)
+    const navigationIsCurrent = navigationWork.capture()
     loadState(activeDocumentId).then((state) => {
-      if (!state) return
+      if (!current || !state) return
       setBookmarks(state.bookmarks)
-      setActiveHeading(state.activeHeading)
-      if (state.position) {
-        const resolved = resolveSemanticPosition(semanticDocument, state.position)
-        setActiveNodeId(resolved.node?.id ?? '')
+      if (navigationIsCurrent()) {
+        const resolved = state.position && resolveSemanticPosition(semanticDocument, state.position)
+        const nodeId = resolved ? resolved.node?.id ?? '' : state.activeHeading
+        setNavigationNode(nodeId)
+        queueNavigation(() => (document.getElementById(nodeId) ?? document.getElementById(readerNodeId(nodeId)))?.scrollIntoView({ behavior: 'auto', block: 'start' }))
       }
       setFontScale(state.fontScale)
       setLineHeight(state.lineHeight ?? defaultReaderPreferences.lineHeight)
       setContentWidth(state.contentWidth ?? defaultReaderPreferences.contentWidth)
       setReducedMotion(state.reducedMotion ?? defaultReaderPreferences.reducedMotion)
-    }).catch(() => setAppStatus('Desktop settings are temporarily unavailable. Restart the desktop app to reconnect.'))
+    }).catch(() => { if (current) setAppStatus('Desktop settings are temporarily unavailable. Restart the desktop app to reconnect.') }).finally(() => { if (current) setReaderStateReady(true) })
+    return () => { current = false }
   }, [activeDocumentId])
 
   useEffect(() => {
     const saveState = window.sensibleMD?.saveDocumentState
-    if (typeof saveState !== 'function') return
+    if (closing || typeof saveState !== 'function') return
     const timer = window.setTimeout(() => {
-      void saveState({ documentId: activeDocumentId, bookmarks, activeHeading, position: createSemanticPosition(semanticDocument, activeNodeId || activeHeading) ?? undefined, fontScale, lineHeight, contentWidth, reducedMotion }).catch(() => setAppStatus('Desktop settings could not be saved. Your document remains open.'))
+      const write = saveState({ documentId: activeDocumentId, bookmarks, activeHeading, position: createSemanticPosition(semanticDocument, activeNodeId || activeHeading) ?? undefined, fontScale, lineHeight, contentWidth, reducedMotion }).catch(() => setAppStatus('Desktop settings could not be saved. Your document remains open.'))
+      pendingReaderWrites.current.add(write)
+      void write.finally(() => pendingReaderWrites.current.delete(write))
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [activeDocumentId, activeHeading, activeNodeId, bookmarks, fontScale, lineHeight, contentWidth, reducedMotion, source])
+  }, [activeDocumentId, activeHeading, activeNodeId, bookmarks, fontScale, lineHeight, contentWidth, reducedMotion, source, closing])
 
   useEffect(() => {
     const saveRecoverySnapshot = window.sensibleMD?.saveRecoverySnapshot
@@ -255,17 +314,32 @@ function App() {
   }, [query, searchScope])
 
   useEffect(() => {
-    if (readingMode === 'continuous' || !activeNodeId && !activeHeading) return
-    const presentationPages = paginateDocument(semanticDocument, readingMode === 'spread' ? 52 : 76)
-    const nextPageIndex = pageIndexForNode(presentationPages, activeNodeId || activeHeading)
-    setPageIndex((currentIndex) => currentIndex === nextPageIndex ? currentIndex : nextPageIndex)
-  }, [activeHeading, activeNodeId, readingMode, source])
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || commandPaletteOpen) return
+      if (settingsOpen) {
+        setSettingsOpen(false)
+        settingsTrigger.current?.focus()
+      } else if (searchOpen) {
+        document.getElementById('document-search')?.focus()
+        setSearchOpen(false)
+      }
+    }
+    const clickAway = (event: PointerEvent) => {
+      if (settingsOpen && event.target instanceof Node && !settingsPanel.current?.contains(event.target) && !settingsTrigger.current?.contains(event.target)) setSettingsOpen(false)
+    }
+    window.addEventListener('keydown', dismiss)
+    document.addEventListener('pointerdown', clickAway)
+    return () => {
+      window.removeEventListener('keydown', dismiss)
+      document.removeEventListener('pointerdown', clickAway)
+    }
+  }, [commandPaletteOpen, settingsOpen, searchOpen])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'e') { event.preventDefault(); setView((current) => current === 'read' ? 'write' : 'read') }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandPaletteOpen(true) }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); document.getElementById('document-search')?.focus() }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); setSearchOpen(true); document.getElementById('document-search')?.focus() }
       if (view === 'read' && event.altKey && event.key === 'ArrowDown') { event.preventDefault(); navigateHeading('next') }
       if (view === 'read' && event.altKey && event.key === 'ArrowUp') { event.preventDefault(); navigateHeading('previous') }
       const target = event.target
@@ -281,10 +355,12 @@ function App() {
 
   const goToHeading = (heading: Heading, reason: NavigationReason = 'manual', recordHistory = true) => {
     if (recordHistory) historyRef.current.visit({ documentId: activeDocumentId, headingId: heading.id, reason })
-    setActiveHeading(heading.id)
-    setActiveNodeId(heading.id)
-    setView('read')
-    requestAnimationFrame(() => document.getElementById(heading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    setNavigationNode(heading.id)
+    if (view !== 'read') setOutlineJump({ line: heading.line, isCurrent: navigationWork.capture() })
+    queueNavigation(() => {
+      const surface = document.querySelector(view === 'split' ? '.authoring-preview' : '.document-reader, .book-reader')
+      surface?.querySelector(`[id="${heading.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
   const navigateHeading = (direction: 'next' | 'previous') => {
     const target = adjacentHeading(semanticDocument.headings, activeHeading, direction)
@@ -292,11 +368,9 @@ function App() {
     if (heading) goToHeading(heading)
   }
   const goToNode = (node: SemanticNode) => {
-    const owningHeading = [...semanticDocument.headings].reverse().find((heading) => heading.range.start <= node.range.start)
-    setActiveNodeId(node.id)
-    setActiveHeading(owningHeading?.id ?? '')
+    setNavigationNode(node.id)
     setView('read')
-    requestAnimationFrame(() => document.getElementById(readerNodeId(node.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    queueNavigation(() => document.getElementById(readerNodeId(node.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   }
   const navigateStructure = (type: 'paragraph' | 'link' | 'image' | 'table' | 'code', direction: 'next' | 'previous') => {
     const target = adjacentNavigableNode(semanticDocument.navigableNodes, activeNodeId || activeHeading, type, direction)
@@ -310,14 +384,11 @@ function App() {
     void navigator.clipboard.writeText(sourceToCopy).then(() => setCopyStatus(`${type === 'code' ? 'Code block' : 'Paragraph'} copied.`)).catch(() => setCopyStatus('Copy was blocked by this browser.'))
   }
   const setPageAndContext = (nextIndex: number) => {
-    setPageIndex(nextIndex)
-    const headingFragment = pages[nextIndex]?.fragments.find((fragment) => semanticDocument.headings.some((heading) => heading.id === fragment.nodeId))
-    const heading = headingFragment && headings.find((item) => item.id === headingFragment.nodeId)
-    if (heading) setActiveHeading(heading.id)
+    const anchor = locationForPage(pages, nextIndex)
+    if (anchor) { navigationWork.invalidate(); setNavigationAnchor(anchor) }
   }
   const turnPage = (direction: 'next' | 'previous') => {
-    const step = readingMode === 'spread' ? 2 : 1
-    setPageAndContext(pageIndexAfter(pageIndex, pages.length, direction, step))
+    setPageAndContext(pageIndexAfter(pageIndex, pages.length, direction, pageStep))
   }
   const goThroughHistory = (direction: 'back' | 'forward') => {
     const entry = direction === 'back' ? historyRef.current.back() : historyRef.current.forward()
@@ -328,8 +399,8 @@ function App() {
       setSource(targetDocument.source)
       setDocumentName(targetDocument.name)
       const targetHeading = parseSemanticDocument(targetDocument.source, buffer.snapshot().version).headings.find((heading) => heading.id === entry.headingId)
-      setActiveHeading(targetHeading?.id ?? '')
-      if (targetHeading) requestAnimationFrame(() => document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+      setNavigationNode(targetHeading?.id ?? '')
+      if (targetHeading) queueNavigation(() => document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), targetDocument.id, targetDocument.source)
       return
     }
     const heading = entry && headings.find((item) => item.id === entry.headingId)
@@ -353,10 +424,10 @@ function App() {
     setActiveDocumentId(targetDocument.id)
     setSource(targetDocument.source)
     setDocumentName(targetDocument.name)
-    setActiveHeading(targetHeading?.id ?? '')
+    setNavigationNode(targetHeading?.id ?? '')
     setView('read')
     if (targetHeading) historyRef.current.visit({ documentId: targetDocument.id, headingId: targetHeading.id, reason: 'link' })
-    requestAnimationFrame(() => targetHeading && document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    queueNavigation(() => targetHeading && document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), targetDocument.id, targetDocument.source)
     return true
   }
   const updateSource = (nextSource: string) => {
@@ -386,11 +457,11 @@ function App() {
       setActiveDocumentId(targetDocument.id)
       setSource(targetDocument.source)
       setDocumentName(targetDocument.name)
-      setActiveHeading('')
+      setNavigationNode('')
       setView('read')
       const targetHeadings = parseSemanticDocument(targetDocument.source, buffer.snapshot().version).headings
       const targetHeading = [...targetHeadings].reverse().find((heading) => heading.range.line <= result.line) ?? targetHeadings[0]
-      if (targetHeading) requestAnimationFrame(() => { setActiveHeading(targetHeading.id); document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) })
+      if (targetHeading) queueNavigation(() => { setNavigationNode(targetHeading.id); document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, targetDocument.id, targetDocument.source)
       return
     }
     goToSearchResult(result.line, recordHistory)
@@ -417,9 +488,9 @@ function App() {
       setActiveDocumentId(originDocument.id)
       setSource(originDocument.source)
       setDocumentName(originDocument.name)
-      setActiveHeading(searchOrigin.headingId)
+      setNavigationNode(searchOrigin.headingId)
       setView('read')
-      requestAnimationFrame(() => document.getElementById(searchOrigin.headingId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+      queueNavigation(() => document.getElementById(searchOrigin.headingId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), originDocument.id, originDocument.source)
     }
     setSearchOrigin(null)
     setSearchIndex(-1)
@@ -428,7 +499,7 @@ function App() {
     const file = event.target.files?.[0]
     if (!file) return
     const fileReader = new FileReader()
-    fileReader.onload = () => { const source = String(fileReader.result); const documents = createCollection([{ id: browserDocumentId(file), name: file.name, source }]); buffer.replace(source, 'programmatic'); buffer.markSaved(); setCollection(documents); setActiveDocumentId(documents[0].id); setActiveSessionId(null); setSource(source); setDocumentName(file.name); setCanSaveDirectly(false); setIsDirty(false); setActiveHeading(''); setActiveNodeId(''); setView('read') }
+    fileReader.onload = () => { const source = String(fileReader.result); const documents = createCollection([{ id: browserDocumentId(file), name: file.name, source }]); buffer.replace(source, 'programmatic'); buffer.markSaved(); setCollection(documents); setActiveDocumentId(documents[0].id); setActiveSessionId(null); setSource(source); setDocumentName(file.name); setCanSaveDirectly(false); setIsDirty(false); setNavigationNode(''); setView('read') }
     fileReader.readAsText(file)
     event.target.value = ''
   }
@@ -447,7 +518,7 @@ function App() {
       setDocumentName(active.name)
       setCanSaveDirectly(false)
       setIsDirty(false)
-      setActiveHeading('')
+      setNavigationNode('')
       setView('read')
     })
     event.target.value = ''
@@ -460,7 +531,6 @@ function App() {
     const targetModel = parseSemanticDocument(collectionDocument.source, buffer.snapshot().version)
     const headingIds = new Set(targetModel.headings.map((heading) => heading.id))
     const resolved = resolveSemanticPosition(targetModel, remembered?.position)
-    const owningHeading = resolved.node && [...targetModel.headings].reverse().find((heading) => heading.range.start <= resolved.node!.range.start)
     buffer.replace(collectionDocument.source, 'programmatic')
     setActiveDocumentId(collectionDocument.id)
     setSource(collectionDocument.source)
@@ -468,10 +538,9 @@ function App() {
     setCanSaveDirectly(false)
     setIsDirty(false)
     setBookmarks(remembered?.bookmarks.filter((bookmark) => headingIds.has(bookmark)) ?? [])
-    setActiveNodeId(resolved.node?.id ?? '')
-    setActiveHeading(owningHeading?.id ?? (remembered && headingIds.has(remembered.activeHeading) ? remembered.activeHeading : ''))
+    setNavigationNode(resolved.node?.id ?? (remembered && headingIds.has(remembered.activeHeading) ? remembered.activeHeading : ''))
     setView('read')
-    if (resolved.node) requestAnimationFrame(() => document.getElementById(readerNodeId(resolved.node!.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    if (resolved.node) queueNavigation(() => document.getElementById(readerNodeId(resolved.node!.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), collectionDocument.id, collectionDocument.source)
   }
   const navigateChapter = (direction: 'next' | 'previous') => {
     const targetDocument = adjacentCollectionDocument(collection, activeDocumentId, direction)
@@ -483,12 +552,12 @@ function App() {
     setActiveDocumentId(targetDocument.id)
     setSource(targetDocument.source)
     setDocumentName(targetDocument.name)
-    setActiveHeading(targetHeading?.id ?? '')
+    setNavigationNode(targetHeading?.id ?? '')
     setCanSaveDirectly(false)
     setIsDirty(false)
     setView('read')
     if (targetHeading) historyRef.current.visit({ documentId: targetDocument.id, headingId: targetHeading.id, reason: 'manual' })
-    requestAnimationFrame(() => targetHeading && document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    queueNavigation(() => targetHeading && document.getElementById(targetHeading.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), targetDocument.id, targetDocument.source)
   }
   const openDocument = async () => {
     const openNativeDocument = window.sensibleMD?.openDocument
@@ -505,8 +574,7 @@ function App() {
     setDocumentName(file.name)
     setCanSaveDirectly(true)
     setIsDirty(false)
-    setActiveHeading('')
-    setActiveNodeId('')
+    setNavigationNode('')
     setView('read')
     refreshRecentDocuments()
   }
@@ -525,22 +593,22 @@ function App() {
     setDocumentName(file.name)
     setCanSaveDirectly(true)
     setIsDirty(false)
-    setActiveHeading('')
-    setActiveNodeId('')
+    setNavigationNode('')
     setView('read')
     refreshRecentDocuments()
   }
   const saveFile = () => {
+    const savedVersion = buffer.snapshot().version
     const saveOpenedDocument = window.sensibleMD?.saveOpenedDocument
     if (canSaveDirectly && typeof saveOpenedDocument === 'function') {
-      void saveOpenedDocument({ source }).then(() => { buffer.markSaved(); setIsDirty(false); setAppStatus('Saved.') }).catch(() => setAppStatus('The file could not be saved. Your edits are still open.'))
+      trackSave(saveOpenedDocument({ source }).then(() => { if (buffer.snapshot().version !== savedVersion) { setAppStatus('Saved the earlier version. Newer changes remain open.'); return } buffer.markSaved(); setIsDirty(false); setAppStatus('Saved.') }).catch(() => setAppStatus('The file could not be saved. Your edits are still open.')))
       return
     }
     const saveNativeDocument = window.sensibleMD?.saveDocumentAs
     if (typeof saveNativeDocument === 'function') {
-      void saveNativeDocument({ name: documentName, source }).then((file) => {
-        if (file) { setDocumentName(file.name); buffer.markSaved(); setIsDirty(false); setAppStatus('Saved.') }
-      }).catch(() => setAppStatus('The file could not be saved. Your edits are still open.'))
+      trackSave(saveNativeDocument({ name: documentName, source }).then((file) => {
+        if (file) { if (buffer.snapshot().version !== savedVersion) { setAppStatus('Saved the earlier version. Newer changes remain open.'); return } setDocumentName(file.name); buffer.markSaved(); setIsDirty(false); setAppStatus('Saved.') }
+      }).catch(() => setAppStatus('The file could not be saved. Your edits are still open.')))
       return
     }
     const blob = new Blob([source], { type: 'text/markdown;charset=utf-8' })
@@ -554,6 +622,29 @@ function App() {
     setIsDirty(false)
     setAppStatus('Download started.')
   }
+  const closeDocument = async (completed = onClose): Promise<boolean> => {
+    if (isDirty || buffer.snapshot().isDirty) { setAppStatus('Save your changes before closing this document.'); return false }
+    if (pendingSaves.current.size) { setAppStatus('A save is still in progress. Close the document when it finishes.'); return false }
+    if (!readerStateReady) { setAppStatus('Reader state is still loading. Try closing again when it finishes.'); return false }
+    if (closingRef.current) return false
+    closingRef.current = true
+    setClosing(true)
+    const isCurrent = navigationWork.capture()
+    const version = buffer.snapshot().version
+    try {
+      // Drain earlier reader writes before flushing the final position. Closing
+      // unmounts the workspace, cancelling its timers/listeners without writing
+      // an empty document over reader memory or recovery snapshots.
+      await Promise.allSettled([...pendingReaderWrites.current])
+      if (!isCurrent() || buffer.snapshot().version !== version || buffer.snapshot().isDirty) return false
+      await window.sensibleMD?.saveDocumentState?.({ documentId: activeDocumentId, bookmarks, activeHeading, position: createSemanticPosition(semanticDocument, activeNodeId || activeHeading) ?? undefined, fontScale, lineHeight, contentWidth, reducedMotion })
+      if (!isCurrent() || buffer.snapshot().version !== version || buffer.snapshot().isDirty) return false
+      completed()
+      return true
+    } catch { setAppStatus('Reader state could not be saved. The document is still open.'); return false }
+    finally { closingRef.current = false; setClosing(false) }
+  }
+  useImperativeHandle(prepareOpen, () => () => closeDocument(() => {}))
   const reloadExternalChange = () => {
     if (externalChange === null) return
     buffer.replace(externalChange, 'external-reload')
@@ -577,6 +668,7 @@ function App() {
     { id: 'app.openFile', title: 'Open Markdown File', keywords: ['document', 'file'], shortcut: 'Cmd/Ctrl+O', scope: 'global', enabled: true, execute: () => void openDocument() },
     ...recentDocuments.map((recent) => ({ id: `app.openRecent.${recent.index}`, title: `Open Recent: ${recent.name}`, keywords: ['recent', 'document', 'file'], scope: 'global' as const, enabled: true, execute: () => void openRecentDocument(recent.index) })),
     { id: 'app.openCollection', title: 'Open Markdown Collection', keywords: ['chapters', 'book', 'multiple files'], scope: 'global', enabled: true, execute: () => collectionInput.current?.click() },
+    { id: 'file.close', title: 'Close Document', keywords: ['document', 'close'], scope: 'global', enabled: !closing, execute: () => void closeDocument() },
     { id: 'file.save', title: 'Save Markdown File', keywords: ['document', 'download'], shortcut: 'Cmd/Ctrl+S', scope: 'global', enabled: true, execute: saveFile },
     { id: 'reader.nextHeading', title: 'Next Heading', keywords: ['navigate', 'forward', 'section'], shortcut: 'Alt+Down', scope: 'reader', enabled: view === 'read' && Boolean(adjacentHeading(semanticDocument.headings, activeHeading, 'next')), disabledReason: 'No next heading is available.', execute: () => navigateHeading('next') },
     { id: 'reader.previousHeading', title: 'Previous Heading', keywords: ['navigate', 'back', 'section'], shortcut: 'Alt+Up', scope: 'reader', enabled: view === 'read' && Boolean(adjacentHeading(semanticDocument.headings, activeHeading, 'previous')), disabledReason: 'No previous heading is available.', execute: () => navigateHeading('previous') },
@@ -590,7 +682,7 @@ function App() {
     { id: 'reader.copyCurrentCodeBlock', title: 'Copy Current Code Block', keywords: ['reader', 'clipboard', 'code'], scope: 'reader', enabled: view === 'read' && Boolean(adjacentNavigableNode(semanticDocument.navigableNodes, activeNodeId || activeHeading, 'code', 'next')), disabledReason: 'No code block is available to copy.', execute: () => copyCurrentNode('code') },
     { id: 'history.back', title: 'Go Back', keywords: ['history', 'previous location'], scope: 'reader', enabled: historyRef.current.canGoBack(), disabledReason: 'No previous reading location is available.', execute: () => goThroughHistory('back') },
     { id: 'history.forward', title: 'Go Forward', keywords: ['history', 'next location'], scope: 'reader', enabled: historyRef.current.canGoForward(), disabledReason: 'No forward reading location is available.', execute: () => goThroughHistory('forward') },
-    { id: 'book.nextPage', title: 'Next Page', keywords: ['book', 'forward', 'turn'], shortcut: 'Right Arrow', scope: 'book', enabled: view === 'read' && readingMode !== 'continuous' && pageIndex < pages.length - 1, disabledReason: 'No next page is available.', execute: () => turnPage('next') },
+    { id: 'book.nextPage', title: 'Next Page', keywords: ['book', 'forward', 'turn'], shortcut: 'Right Arrow', scope: 'book', enabled: view === 'read' && readingMode !== 'continuous' && pageIndex + pageStep < pages.length, disabledReason: 'No next page is available.', execute: () => turnPage('next') },
     { id: 'book.previousPage', title: 'Previous Page', keywords: ['book', 'back', 'turn'], shortcut: 'Left Arrow', scope: 'book', enabled: view === 'read' && readingMode !== 'continuous' && pageIndex > 0, disabledReason: 'No previous page is available.', execute: () => turnPage('previous') },
     { id: 'book.nextChapter', title: 'Next Chapter', keywords: ['book', 'collection', 'forward'], scope: 'book', enabled: view === 'read' && Boolean(adjacentCollectionDocument(collection, activeDocumentId, 'next')), disabledReason: 'No next chapter is available.', execute: () => navigateChapter('next') },
     { id: 'book.previousChapter', title: 'Previous Chapter', keywords: ['book', 'collection', 'back'], scope: 'book', enabled: view === 'read' && Boolean(adjacentCollectionDocument(collection, activeDocumentId, 'previous')), disabledReason: 'No previous chapter is available.', execute: () => navigateChapter('previous') },
@@ -611,13 +703,13 @@ function App() {
 
   const preferences = normalizeReaderPreferences({ fontScale, lineHeight, contentWidth, reducedMotion })
   return <div className={preferences.reducedMotion ? 'app-shell reduced-motion' : 'app-shell'} data-dirty={isDirty} data-document-id={activeDocumentId} data-session-id={activeSessionId ?? ''} style={{ '--reader-scale': `${preferences.fontScale}%`, '--reader-line-height': String(preferences.lineHeight), '--reader-width': `${preferences.contentWidth}px` } as React.CSSProperties}>
-    <header className="topbar"><div className="brand" aria-label="SensibleMD"><span className="brand-mark"><BookOpen size={20} /></span><span>SensibleMD</span></div><div className="document-title"><FileText size={16} /><span>{documentName}</span><span className="saved"><Check size={14} /> Saved locally</span></div><div className="topbar-actions"><button className="icon-button" type="button" onClick={openDocument} aria-label="Open Markdown file" title="Open Markdown file"><FolderOpen size={18} /></button><button className="icon-button" type="button" onClick={saveFile} aria-label="Save Markdown file" title="Save Markdown file"><Download size={18} /></button><button className="icon-button" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-label="Reading settings" aria-expanded={settingsOpen} title="Reading settings"><Settings2 size={18} /></button><button className="icon-button" type="button" onClick={() => setCommandPaletteOpen(true)} aria-label="Show command palette" title="Show command palette (Cmd/Ctrl+K)"><Command size={18} /></button></div><input ref={fileInput} className="visually-hidden" type="file" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" onChange={openFile} /></header>
+    <header className="topbar"><div className="brand" aria-label="SensibleMD"><span className="brand-mark"><BookOpen size={20} /></span><span>SensibleMD</span></div><div className="document-title"><FileText size={16} /><span>{documentName}</span><span className="saved"><Check size={14} /> Saved locally</span></div><div className="topbar-actions"><button className="icon-button" type="button" onClick={openDocument} aria-label="Open Markdown file" title="Open Markdown file"><FolderOpen size={18} /></button><button className="icon-button" type="button" onClick={() => void closeDocument()} disabled={closing} aria-label="Close document" title="Close document"><X size={18} /></button><button className="icon-button" type="button" onClick={saveFile} aria-label="Save Markdown file" title="Save Markdown file"><Download size={18} /></button><button className="icon-button" type="button" ref={settingsTrigger} onClick={() => setSettingsOpen((open) => !open)} aria-label="Reading settings" aria-expanded={settingsOpen} title="Reading settings"><Settings2 size={18} /></button><button className="icon-button" type="button" onClick={() => setCommandPaletteOpen(true)} aria-label="Show command palette" title="Show command palette (Cmd/Ctrl+K)"><Command size={18} /></button></div><input ref={fileInput} className="visually-hidden" type="file" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" onChange={openFile} /></header>
     <input ref={collectionInput} className="visually-hidden" type="file" multiple accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" onChange={openCollection} />
-    {commandPaletteOpen && <Suspense fallback={null}><CommandPalette commands={commands} onClose={() => setCommandPaletteOpen(false)} /></Suspense>}
-    <div className={`workspace ${outlineOpen ? '' : 'outline-closed'}`}><aside className={`outline-panel ${outlineOpen ? '' : 'collapsed'}`} aria-label="Document outline"><div className="panel-heading"><span>{collection.length > 1 ? `Chapters · ${collection.length}` : 'Outline'}</span><button type="button" className="icon-button small" onClick={() => setOutlineOpen(false)} aria-label="Close outline"><X size={16} /></button></div>{collection.length > 1 && <nav className="chapter-list" aria-label="Collection chapters">{collection.map((document, index) => <button type="button" key={document.id} onClick={() => switchDocument(document)} className={document.id === activeDocumentId ? 'active' : ''}><small>{String(index + 1).padStart(2, '0')}</small>{document.name}</button>)}</nav>}<nav>{headings.length ? headings.map((heading) => <button type="button" key={heading.id} onClick={() => goToHeading(heading, 'outline')} className={`outline-item level-${heading.level} ${activeHeading === heading.id ? 'active' : ''}`}>{heading.text}</button>) : <p className="empty-state">Headings will appear here.</p>}</nav><div className="outline-footer"><span>{wordCount.toLocaleString()} words</span><span>{headings.length} sections</span></div></aside>
-      <main className="main-area"><div className="reader-toolbar">{!outlineOpen && <button type="button" className="icon-button" onClick={() => setOutlineOpen(true)} aria-label="Open outline"><ChevronRight size={18} /></button>}<div className="mode-switch" role="group" aria-label="Document mode"><button type="button" className={view === 'read' ? 'selected' : ''} onClick={() => setView('read')}>Read</button><button type="button" className={view === 'write' ? 'selected' : ''} onClick={() => setView('write')}>Write</button><button type="button" className={view === 'split' ? 'selected' : ''} onClick={() => setView('split')}>Split</button></div>{view === 'read' && <div className="mode-switch layout-switch" role="group" aria-label="Reading layout"><button type="button" className={readingMode === 'continuous' ? 'selected' : ''} onClick={() => setReadingMode('continuous')}>Scroll</button><button type="button" className={readingMode === 'single' ? 'selected' : ''} onClick={() => { setReadingMode('single'); setPageIndex(0) }}>Page</button><button type="button" className={readingMode === 'spread' ? 'selected' : ''} onClick={() => { setReadingMode('spread'); setPageIndex(0) }}>Spread</button></div>}<label className="search-field"><Search size={16} /><input id="document-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search document" aria-label="Search document" />{query && <span>{matches}</span>}</label><button type="button" className={`bookmark-button ${activeHeading && bookmarks.includes(activeHeading) ? 'saved-bookmark' : ''}`} onClick={toggleBookmark} disabled={!activeHeading}><Bookmark size={16} fill={activeHeading && bookmarks.includes(activeHeading) ? 'currentColor' : 'none'} /> Bookmark</button></div>
-        {query && <section className="search-results" aria-label="Search results"><header><span>{searchIndex >= 0 ? `${searchIndex + 1} of ${searchResults.length} results` : `${matches} matches in ${searchResults.length} document blocks`}</span><div role="group" aria-label="Search scope"><button type="button" className={searchScope === 'document' ? 'selected' : ''} onClick={() => { setSearchScope('document'); setSearchIndex(-1); setSearchOrigin(null) }}>This file</button><button type="button" className={searchScope === 'collection' ? 'selected' : ''} onClick={() => { setSearchScope('collection'); setSearchIndex(-1); setSearchOrigin(null) }}>All chapters</button></div></header><div className="search-session-controls"><button type="button" onClick={() => navigateSearchResults('previous')} disabled={!searchResults.length} aria-label="Previous search result"><ChevronLeft size={15} /></button><button type="button" onClick={() => navigateSearchResults('next')} disabled={!searchResults.length} aria-label="Next search result"><ChevronRight size={15} /></button><button type="button" onClick={returnToSearchOrigin} disabled={!searchOrigin}>Return to origin</button></div>{searchResults.slice(0, 8).map((result, index) => <button type="button" key={`${result.documentId}-${result.nodeId}`} className={searchIndex === index ? 'selected-result' : ''} onClick={() => { setSearchIndex(index); goToCollectionSearchResult(result) }}><strong>{result.documentName} · {result.section}</strong><span>{result.text || result.section}</span><small>Line {result.line}</small></button>)}</section>}
-        {settingsOpen && <section className="settings-popover" aria-label="Reading settings"><label>Text size <output>{preferences.fontScale}%</output><input type="range" min="85" max="150" value={preferences.fontScale} onChange={(event) => setFontScale(Number(event.target.value))} /></label><label>Line spacing <output>{preferences.lineHeight.toFixed(2)}</output><input type="range" min="1.3" max="2.4" step="0.05" value={preferences.lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))} /></label><label>Content width <output>{preferences.contentWidth}px</output><input type="range" min="480" max="1040" step="20" value={preferences.contentWidth} onChange={(event) => setContentWidth(Number(event.target.value))} /></label><label className="toggle-setting"><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} /> Reduce motion</label></section>}
+    {commandPaletteOpen && <Suspense fallback={null}><CommandPalette query={commandQuery} onQueryChange={setCommandQuery} commands={commands} onClose={() => setCommandPaletteOpen(false)} /></Suspense>}
+    <div className={`workspace ${outlineOpen ? '' : 'outline-closed'}`}><aside className={`outline-panel ${outlineOpen ? '' : 'collapsed'}`} aria-label="Document outline"><div className="panel-heading"><span>{collection.length > 1 ? `Chapters · ${collection.length}` : 'Outline'}</span><button type="button" className="icon-button small" onClick={() => setOutlineOpen(false)} aria-label="Close outline"><X size={16} /></button></div>{collection.length > 1 && <nav className="chapter-list" aria-label="Collection chapters">{collection.map((document, index) => <button type="button" key={document.id} onClick={() => switchDocument(document)} className={document.id === activeDocumentId ? 'active' : ''}><small>{String(index + 1).padStart(2, '0')}</small>{document.name}</button>)}</nav>}<nav>{headings.length ? headings.map((heading) => <button type="button" key={heading.id} onClick={() => goToHeading(heading, 'outline')} aria-current={activeHeading === heading.id ? 'location' : undefined} className={`outline-item level-${heading.level} ${activeHeading === heading.id ? 'active' : ''}`}>{heading.text}</button>) : <p className="empty-state">Headings will appear here.</p>}</nav><div className="outline-footer"><span>{wordCount.toLocaleString()} words</span><span>{headings.length} sections</span></div></aside>
+      <main className="main-area"><div className="reader-toolbar">{!outlineOpen && <button type="button" className="icon-button" onClick={() => setOutlineOpen(true)} aria-label="Open outline"><ChevronRight size={18} /></button>}<div className="mode-switch" role="group" aria-label="Document mode"><button type="button" className={view === 'read' ? 'selected' : ''} onClick={() => setView('read')}>Read</button><button type="button" className={view === 'write' ? 'selected' : ''} onClick={() => setView('write')}>Write</button><button type="button" className={view === 'split' ? 'selected' : ''} onClick={() => setView('split')}>Split</button></div>{view === 'read' && <div className="mode-switch layout-switch" role="group" aria-label="Reading layout"><button type="button" className={readingMode === 'continuous' ? 'selected' : ''} onClick={() => setReadingMode('continuous')}>Scroll</button><button type="button" className={readingMode === 'single' ? 'selected' : ''} onClick={() => setReadingMode('single')}>Page</button><button type="button" className={readingMode === 'spread' ? 'selected' : ''} onClick={() => setReadingMode('spread')}>Spread</button></div>}<label className="search-field"><Search size={16} /><input id="document-search" value={query} onFocus={() => setSearchOpen(true)} onClick={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true) }} placeholder="Search document" aria-label="Search document" />{query && <span>{matches}</span>}</label><button type="button" className={`bookmark-button ${activeHeading && bookmarks.includes(activeHeading) ? 'saved-bookmark' : ''}`} onClick={toggleBookmark} disabled={!activeHeading}><Bookmark size={16} fill={activeHeading && bookmarks.includes(activeHeading) ? 'currentColor' : 'none'} /> Bookmark</button></div>
+        {searchOpen && query && <section className="search-results" aria-label="Search results"><header><span>{searchIndex >= 0 ? `${searchIndex + 1} of ${searchResults.length} results` : `${matches} matches in ${searchResults.length} document blocks`}</span><div role="group" aria-label="Search scope"><button type="button" className={searchScope === 'document' ? 'selected' : ''} onClick={() => { setSearchScope('document'); setSearchIndex(-1); setSearchOrigin(null) }}>This file</button><button type="button" className={searchScope === 'collection' ? 'selected' : ''} onClick={() => { setSearchScope('collection'); setSearchIndex(-1); setSearchOrigin(null) }}>All chapters</button></div></header><div className="search-session-controls"><button type="button" onClick={() => navigateSearchResults('previous')} disabled={!searchResults.length} aria-label="Previous search result"><ChevronLeft size={15} /></button><button type="button" onClick={() => navigateSearchResults('next')} disabled={!searchResults.length} aria-label="Next search result"><ChevronRight size={15} /></button><button type="button" onClick={returnToSearchOrigin} disabled={!searchOrigin}>Return to origin</button></div>{searchResults.slice(0, 8).map((result, index) => <button type="button" key={`${result.documentId}-${result.nodeId}`} className={searchIndex === index ? 'selected-result' : ''} onClick={() => { setSearchIndex(index); goToCollectionSearchResult(result) }}><strong>{result.documentName} · {result.section}</strong><span>{result.text || result.section}</span><small>Line {result.line}</small></button>)}</section>}
+        {settingsOpen && <section ref={settingsPanel} className="settings-popover" aria-label="Reading settings"><label>Text size <output>{preferences.fontScale}%</output><input type="range" min="85" max="150" value={preferences.fontScale} onChange={(event) => setFontScale(Number(event.target.value))} /></label><label>Line spacing <output>{preferences.lineHeight.toFixed(2)}</output><input type="range" min="1.3" max="2.4" step="0.05" value={preferences.lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))} /></label><label>Content width <output>{preferences.contentWidth}px</output><input type="range" min="480" max="1040" step="20" value={preferences.contentWidth} onChange={(event) => setContentWidth(Number(event.target.value))} /></label><label className="toggle-setting"><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} /> Reduce motion</label></section>}
         {externalChange !== null && <section className="external-change-notice" role="alert"><strong>This file changed outside SensibleMD.</strong><p>Your unsaved edits are still intact. Choose which version to keep.</p><div><button type="button" onClick={() => setExternalChange(null)}>Keep editing</button><button type="button" onClick={reloadExternalChange}>Reload from disk</button></div></section>}
         {recoverySnapshot !== null && <section className="recovery-notice" role="alert"><strong>Unsaved changes are available.</strong><p>A recovery snapshot from {new Date(recoverySnapshot.savedAt).toLocaleString()} differs from this document.</p><div><button type="button" onClick={() => setRecoverySnapshot(null)}>Discard recovery</button><button type="button" onClick={restoreRecoverySnapshot}>Restore changes</button></div></section>}
         {view === 'read' && sectionSummaryOpen && <section className="section-summary" role="status" aria-label="Current section context"><header><strong>{sectionSummary.heading}</strong><button type="button" className="icon-button small" onClick={() => setSectionSummaryOpen(false)} aria-label="Close section context"><X size={15} /></button></header><p>{sectionSummary.wordCount} words in this section.</p><ul>{Object.entries(sectionSummary.counts).filter(([type]) => type !== 'heading').map(([type, count]) => <li key={type}>{count} {type}{count === 1 ? '' : 's'}</li>)}</ul></section>}
@@ -629,9 +721,37 @@ function App() {
         <p className="copy-status" aria-live="polite">{copyStatus}</p>
         <p className="app-status" aria-live="polite">{appStatus}</p>
         {view !== 'read' && <nav className="diagnostics-filter" aria-label="Diagnostic severity filter"><button type="button" className={findingFilter === 'all' ? 'selected' : ''} onClick={() => setFindingFilter('all')}>All</button><button type="button" className={findingFilter === 'error' ? 'selected' : ''} onClick={() => setFindingFilter('error')}>Errors</button><button type="button" className={findingFilter === 'warning' ? 'selected' : ''} onClick={() => setFindingFilter('warning')}>Warnings</button></nav>}
-        {view === 'read' ? <ReaderSurface source={source} headings={headings} navigableNodes={semanticDocument.navigableNodes} mode={readingMode} pages={pages} pageIndex={pageIndex} onPageIndex={setPageAndContext} onInternalLink={followInternalLink} /> : <section className={`editor-layout ${view === 'split' ? 'split-layout' : ''}`} aria-label="Markdown authoring"><Suspense fallback={<p className="editor-loading">Loading source editor...</p>}><MarkdownEditor value={source} onChange={updateSource} cursorLine={editorLine} onCursorLineChange={setEditorLine} onPromoteHeading={() => changeCurrentHeading('promote')} onDemoteHeading={() => changeCurrentHeading('demote')} jumpToLine={diagnosticLine} /></Suspense>{view === 'split' && <PreviewSurface source={source} headings={headings} />}<aside className="findings-panel"><div className="findings-heading"><Sparkles size={17} /><span>Authoring checks</span><strong>{findings.length}</strong></div>{findings.length ? findings.map((finding) => <button type="button" key={finding.id} className={`finding ${finding.severity}`} onClick={() => setDiagnosticLine(finding.line)}><span>{finding.ruleId} · {finding.confidence}</span><p>{finding.title}</p><small>Line {finding.line}</small></button>) : <div className="all-clear"><Check size={22} /><p>No structural issues found.</p></div>}</aside></section>}</main></div>
+        {view === 'read' ? <ReaderSurface source={source} headings={headings} navigableNodes={semanticDocument.navigableNodes} blocks={semanticDocument.nodes} pageStep={pageStep} mode={readingMode} pages={pages} pageIndex={pageIndex} onPageIndex={setPageAndContext} onInternalLink={followInternalLink} /> : <section className={`editor-layout ${view === 'split' ? 'split-layout' : ''}`} aria-label="Markdown authoring"><Suspense fallback={<p className="editor-loading">Loading source editor...</p>}><MarkdownEditor value={source} onChange={updateSource} cursorLine={editorLine} onCursorLineChange={setEditorLine} onObserveCursor={observeEditorCursor} onPromoteHeading={() => changeCurrentHeading('promote')} onDemoteHeading={() => changeCurrentHeading('demote')} jumpToLine={diagnosticJump?.line ?? null} jumpIsCurrent={diagnosticJump?.isCurrent} navigationJump={outlineJump} /></Suspense>{view === 'split' && <PreviewSurface source={source} headings={headings} />}<aside className="findings-panel"><div className="findings-heading"><Sparkles size={17} /><span>Authoring checks</span><strong>{findings.length}</strong></div>{findings.length ? findings.map((finding) => <button type="button" key={finding.id} className={`finding ${finding.severity}`} onClick={() => { navigationWork.invalidate(); setDiagnosticJump({ line: finding.line, isCurrent: navigationWork.capture() }) }}><span>{finding.ruleId} · {finding.confidence}</span><p>{finding.title}</p><small>Line {finding.line}</small></button>) : <div className="all-clear"><Check size={22} /><p>No structural issues found.</p></div>}</aside></section>}</main></div>
     <footer className="statusbar"><span><span className="status-dot" /> Local prototype</span><span>Cmd/Ctrl + E: switch mode</span><span>Cmd/Ctrl + F: search</span></footer>
   </div>
+}
+
+function App({ initialDocument }: { initialDocument?: OpenedReaderDocument }) {
+  const [opened, setOpened] = useState<OpenedReaderDocument | null>(initialDocument ?? null)
+  const acknowledge = useRef<string | null>(null)
+  const [osStatus, setOsStatus] = useState('')
+  const prepareOpen = useRef<(() => Promise<boolean>) | null>(null)
+  useEffect(() => {
+    const api = window.sensibleMD
+    return api?.onOsOpenRequest?.((request) => {
+      void (async () => {
+        try {
+          if (prepareOpen.current && !await prepareOpen.current()) { api.completeOsOpen?.(request.id); return }
+          if (!api.openOsDocument) { api.completeOsOpen?.(request.id); return }
+          const file = await api.openOsDocument(request.id)
+          setOsStatus('')
+          setOpened({ id: asDocumentId(file.documentId), sessionId: asSessionId(file.sessionId), source: file.source, name: file.name, canSaveDirectly: true })
+          acknowledge.current = request.id
+        } catch { setOsStatus(`Could not open ${request.name}.`); api.completeOsOpen?.(request.id) }
+      })()
+    })
+  }, [])
+  // Acknowledge only after the replacement workspace has committed its guard.
+  // The main process then delivers the next queued OS request.
+  useEffect(() => {
+    if (acknowledge.current) { window.sensibleMD?.completeOsOpen?.(acknowledge.current); acknowledge.current = null }
+  }, [opened])
+  return <>{opened === null ? <NoDocument onOpen={setOpened} /> : <DocumentWorkspace key={opened.sessionId ?? opened.id} initialDocument={opened} prepareOpen={prepareOpen} onClose={() => setOpened(null)} />}{osStatus && <p role="alert">{osStatus}</p>}</>
 }
 
 export default App

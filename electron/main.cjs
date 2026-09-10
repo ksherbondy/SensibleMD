@@ -5,6 +5,8 @@ const path = require('node:path')
 const { createSessionId, deriveDocumentId } = require('./document-identity.cjs')
 const { archiveStateFromPreviousIdentityScheme } = require('./legacy-state.cjs')
 
+const { installFileOpenLifecycle } = require('./file-open-lifecycle.cjs')
+
 const isDevelopment = process.argv.includes('--dev')
 const authorizedDocumentSessions = new Map()
 const authorizedDocumentWatchers = new Map()
@@ -53,16 +55,21 @@ async function rememberRecentFile(filePath) {
 }
 
 async function openAuthorizedDocument(event, filePath) {
-  authorizedDocumentWatchers.get(event.sender.id)?.close()
   const documentId = await deriveDocumentId(filePath)
-  const sessionId = createSessionId()
-  authorizedDocumentSessions.set(event.sender.id, { sessionId, documentId, filePath })
-  const watcher = watch(filePath, async () => {
-    try { event.sender.send('document:external-change', { source: await fs.readFile(filePath, 'utf8') }) } catch {}
-  })
-  authorizedDocumentWatchers.set(event.sender.id, watcher)
+  const source = await fs.readFile(filePath, 'utf8')
   await rememberRecentFile(filePath)
-  return { documentId, sessionId, name: path.basename(filePath), source: await fs.readFile(filePath, 'utf8') }
+  if (event.sender.isDestroyed()) throw new Error('The requesting window closed')
+  const sessionId = createSessionId()
+  const watcher = watch(filePath, async () => {
+    try {
+      const changedSource = await fs.readFile(filePath, 'utf8')
+      if (!event.sender.isDestroyed() && authorizedDocumentSessions.get(event.sender.id)?.sessionId === sessionId) event.sender.send('document:external-change', { source: changedSource })
+    } catch {}
+  })
+  authorizedDocumentWatchers.get(event.sender.id)?.close()
+  authorizedDocumentSessions.set(event.sender.id, { sessionId, documentId, filePath })
+  authorizedDocumentWatchers.set(event.sender.id, watcher)
+  return { documentId, sessionId, name: path.basename(filePath), source }
 }
 
 ipcMain.handle('document:open', async (event) => {
@@ -144,6 +151,13 @@ function createWindow() {
     },
   })
 
+  const contentsId = window.webContents.id
+  window.webContents.once('destroyed', () => {
+    authorizedDocumentWatchers.get(contentsId)?.close()
+    authorizedDocumentWatchers.delete(contentsId)
+    authorizedDocumentSessions.delete(contentsId)
+  })
+
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https:')) shell.openExternal(url)
     return { action: 'deny' }
@@ -151,22 +165,10 @@ function createWindow() {
 
   if (isDevelopment) window.loadURL('http://127.0.0.1:5175')
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+  return window
 }
 
-app.whenReady().then(async () => {
-  await archiveStateFromPreviousIdentityScheme(app.getPath('userData')).catch((error) => { console.error('Could not archive state from a previous identity scheme:', error) })
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
-
-app.on('web-contents-destroyed', (_event, contents) => {
-  authorizedDocumentWatchers.get(contents.id)?.close()
-  authorizedDocumentWatchers.delete(contents.id)
-  authorizedDocumentSessions.delete(contents.id)
+installFileOpenLifecycle({
+  app, ipcMain, createWindow, openDocument: openAuthorizedDocument,
+  beforeReady: () => archiveStateFromPreviousIdentityScheme(app.getPath('userData')).catch((error) => { console.error('Could not archive state from a previous identity scheme:', error) }),
 })

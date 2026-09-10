@@ -51,13 +51,13 @@ describe('pagination', () => {
     expect(pages[1].fragments.map((fragment) => fragment.source).join('\n\n')).toContain('## Second')
   })
 
-  it('keeps a heading with following content and fragments a long paragraph', () => {
+  it('keeps a heading with its whole oversized paragraph', () => {
     const source = '# First\n\nOne two three four five six seven eight.\n\n## Second\n\nNine ten.'
     const document = parseSemanticDocument(source, 1)
     const pages = paginateDocument(document, 6)
     expect(pages[0].fragments.some((fragment) => fragment.source.startsWith('# First'))).toBe(true)
-    expect(pages.flatMap((page) => page.fragments).filter((fragment) => fragment.nodeId === document.nodes[1].id)).toHaveLength(2)
-    expect(pages[1].fragments.some((fragment) => fragment.source.startsWith('## Second'))).toBe(false)
+    expect(pages.flatMap((page) => page.fragments).filter((fragment) => fragment.nodeId === document.nodes[1].id)).toHaveLength(1)
+    expect(pages[1].fragments.some((fragment) => fragment.source.startsWith('## Second'))).toBe(true)
   })
 
   it('keeps page turns within the current page map', () => {

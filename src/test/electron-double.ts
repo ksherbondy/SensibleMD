@@ -40,6 +40,9 @@ export class FakeDesktop {
   /** Path the next Save As dialog returns. `null` models the user cancelling. */
   saveAsDialogResult: string | null = null
   readonly failures = { open: false, save: false, saveAs: false, recents: false, state: false, recovery: false }
+  private osListener: ((request: { id: string; name: string }) => void) | undefined
+  private osFile: string | null = null
+  emitOsOpen(filePath: string) { this.osFile = filePath; this.osListener?.({ id: filePath, name: basename(filePath) }) }
   private readonly externalListeners = new Set<ExternalChangeListener>()
   private previousApi: Window['sensibleMD']
   private installed = false
@@ -88,6 +91,7 @@ export class FakeDesktop {
     if (!this.installed) return
     window.sensibleMD = this.previousApi
     this.externalListeners.clear()
+    this.osListener = undefined
     this.installed = false
   }
 
@@ -105,6 +109,9 @@ export class FakeDesktop {
     return {
     platform: this.platform,
 
+    onOsOpenRequest: (listener) => { this.osListener = listener; return () => { this.osListener = undefined } },
+    openOsDocument: async (id) => { if (id !== this.osFile) throw new Error('Unknown OS request'); return this.authorize(id) },
+    completeOsOpen: () => { this.osFile = null },
     openDocument: () => this.scheduler.schedule('document:open', () => {
       if (this.failures.open) throw new Error('The Markdown file could not be opened.')
       if (!this.openDialogResult) return null

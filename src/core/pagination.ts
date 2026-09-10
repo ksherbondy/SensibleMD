@@ -12,36 +12,19 @@ export function paginateDocument(document: SemanticDocument, wordsPerPage = 220)
     fragments = []
     wordCount = 0
   }
-  const words = (value: string) => value.trim().split(/\s+/).filter(Boolean)
-  for (const [index, node] of document.nodes.entries()) {
-    const source = document.source.slice(node.range.start, node.range.end)
-    const nodeWords = words(source)
-    const nextNode = document.nodes[index + 1]
-    const nextSource = nextNode ? document.source.slice(nextNode.range.start, nextNode.range.end) : ''
-    const headingWithFollowingWords = node.type === 'heading' ? nodeWords.length + words(nextSource).length : nodeWords.length
-    if (node.type === 'heading' && fragments.length && wordCount + headingWithFollowingWords > wordsPerPage) {
-      pushPage()
-    }
-    if (nodeWords.length <= wordsPerPage - wordCount || node.type !== 'paragraph') {
-      if (fragments.length && wordCount + nodeWords.length > wordsPerPage) pushPage()
-      fragments.push({ nodeId: node.id, source, fragmentIndex: 0, fragmentCount: 1, continuesOnNext: false })
-      wordCount += nodeWords.length
-      continue
-    }
-    if (fragments.length && wordsPerPage - wordCount < Math.min(12, nodeWords.length)) pushPage()
-    const createdFragments: PageFragment[] = []
-    let wordIndex = 0
-    while (wordIndex < nodeWords.length) {
-      const capacity = Math.max(1, wordsPerPage - wordCount)
-      const take = Math.min(capacity, nodeWords.length - wordIndex)
-      const fragment: PageFragment = { nodeId: node.id, source: nodeWords.slice(wordIndex, wordIndex + take).join(' '), fragmentIndex: createdFragments.length, fragmentCount: 0, continuesOnNext: wordIndex + take < nodeWords.length }
-      fragments.push(fragment)
-      createdFragments.push(fragment)
-      wordCount += take
-      wordIndex += take
-      if (wordIndex < nodeWords.length) pushPage()
-    }
-    createdFragments.forEach((fragment) => { fragment.fragmentCount = createdFragments.length })
+  // Only blocks represented by the sanitized Markdown renderer own pages.
+  // Definitions remain in the full render source; raw HTML is not rendered.
+  const blocks = document.nodes.filter((node) => ['heading', 'paragraph', 'code', 'blockquote', 'list', 'table', 'thematicBreak'].includes(node.type))
+  for (let index = 0; index < blocks.length;) {
+    const group = [blocks[index++]]
+    // Keep heading runs with their next block, even when that block overflows
+    // capacity. Capacity is a grouping estimate, never a clipping boundary.
+    while (group.at(-1)?.type === 'heading' && index < blocks.length) group.push(blocks[index++])
+    const complete = group.map((node) => ({ nodeId: node.id, source: document.source.slice(node.range.start, node.range.end), fragmentIndex: 0, fragmentCount: 1, continuesOnNext: false }))
+    const groupWords = complete.reduce((total, block) => total + block.source.trim().split(/\s+/).filter(Boolean).length, 0)
+    if (fragments.length && wordCount + groupWords > wordsPerPage) pushPage()
+    fragments.push(...complete)
+    wordCount += groupWords
   }
   pushPage()
   return pages

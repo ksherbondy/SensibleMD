@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "package": "npm run build && electron-builder",
+    "package:local":"npm run build && npx electron-builder --mac --dir --arm64",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -21,6 +22,7 @@
       "electron/**/*",
       "package.json"
     ],
+    "fileAssociations": [{ "ext": "md", "name": "Markdown Document", "role": "Editor" }],
     "mac": {
       "target": "dmg"
     }
