@@ -163,6 +163,14 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  window.webContents.on('will-navigate', (event, url) => {
+  event.preventDefault()
+
+  if (url.startsWith('https:')) {
+    shell.openExternal(url)
+  }
+})
+
   if (isDevelopment) window.loadURL('http://127.0.0.1:5175')
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   return window
