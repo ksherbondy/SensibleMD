@@ -8,7 +8,131 @@ Most Markdown tools treat the rendered document as a preview of source code. Sen
 
 SensibleMD is currently an early **v0.1 prototype** under active development and dogfooding.
 
+## Get SensibleMD Running
+
+SensibleMD is currently distributed as source while the v0.1 prototype is being actively developed and dogfooded. The repository is set up so testers and contributors do not need to edit `package.json` or know Electron Builder flags just to make a desktop build.
+
+### Requirements
+
+- **Node.js 22.12 or newer**
+- **npm**
+- macOS, Windows, or Linux
+
+Check your installed versions:
+
+```bash
+node --version
+npm --version
+```
+
+### Clone and Install
+
+```bash
+git clone <repository-url>
+cd SensibleMD
+npm install
+```
+
+### Build the Desktop App
+
+The easiest option is:
+
+```bash
+npm run package:local
+```
+
+SensibleMD detects the current operating system and CPU architecture, then runs the matching desktop packaging command automatically.
+
+Supported build combinations currently include:
+
+| Platform | Architecture | Package target |
+| --- | --- | --- |
+| macOS | Apple Silicon / ARM64 | DMG |
+| macOS | Intel / x64 | DMG |
+| Windows | x64 | NSIS installer |
+| Windows | ARM64 | NSIS installer |
+| Linux | x64 | AppImage + DEB |
+| Linux | ARM64 | AppImage + DEB |
+
+Build on the operating system you intend to test whenever possible.
+
+If you want to choose the target explicitly:
+
+```bash
+# macOS
+npm run package:mac:arm64
+npm run package:mac:x64
+
+# Windows
+npm run package:win:x64
+npm run package:win:arm64
+
+# Linux
+npm run package:linux:x64
+npm run package:linux:arm64
+```
+
+For unpacked local builds that skip creating the installer/package wrapper:
+
+```bash
+npm run package:mac:dir
+npm run package:win:dir
+npm run package:linux:dir
+```
+
+### Run in Development Mode
+
+Launch the Electron desktop application with the Vite development server:
+
+```bash
+npm run dev:desktop
+```
+
+Run only the web renderer:
+
+```bash
+npm run dev
+```
+
+### Development Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the Vite renderer development server |
+| `npm run dev:desktop` | Start Vite and launch Electron |
+| `npm run build` | Type-check and build the renderer |
+| `npm test` | Run the Vitest suite |
+| `npm run lint` | Run Oxlint |
+| `npm run preview` | Preview the production renderer |
+| `npm run package:local` | Auto-detect the current OS/architecture and create the matching desktop package |
+| `npm run package:mac:arm64` | Build a macOS DMG for Apple Silicon |
+| `npm run package:mac:x64` | Build a macOS DMG for Intel Macs |
+| `npm run package:win:x64` | Build a Windows x64 NSIS installer |
+| `npm run package:win:arm64` | Build a Windows ARM64 NSIS installer |
+| `npm run package:linux:x64` | Build Linux x64 AppImage and DEB packages |
+| `npm run package:linux:arm64` | Build Linux ARM64 AppImage and DEB packages |
+| `npm run package:mac:dir` | Create an unpacked macOS build |
+| `npm run package:win:dir` | Create an unpacked Windows build |
+| `npm run package:linux:dir` | Create an unpacked Linux build |
+
+Application ID:
+
+```text
+com.sensiblemd.app
+```
+
+Product name:
+
+```text
+SensibleMD
+```
+
+Platform application icons are included in the repository and wired into the desktop packaging configuration.
+
+macOS code signing and notarization, broader Windows/Linux validation, and release hardening remain ongoing work.
+
 ## Why SensibleMD?
+
 
 Markdown is excellent for documentation, notes, books, READMEs, technical writing, and long-form text, but many workflows still require choosing between:
 
@@ -28,6 +152,7 @@ SensibleMD is being built as a **filesystem-first, reader-first Markdown applica
 > **Write Markdown anywhere. Read it in SensibleMD.**
 
 ## Current Prototype
+
 
 The v0.1 prototype now includes:
 
@@ -62,6 +187,7 @@ Several systems are intentionally bounded first-pass implementations rather than
 
 ## Reader-First Interaction
 
+
 A core SensibleMD interaction goal is:
 
 ```text
@@ -84,6 +210,7 @@ Current continuity is implemented at **semantic-node / source-line granularity**
 
 ## Reading Modes
 
+
 ### Scroll
 
 A conventional continuous rendered document.
@@ -100,6 +227,7 @@ Page and Spread currently use a bounded pagination model. Complete Markdown bloc
 
 ## Writing Modes
 
+
 ### Write
 
 Raw Markdown editing using CodeMirror 6.
@@ -111,6 +239,7 @@ Side-by-side Markdown editing and rendered preview.
 The editor and preview share the same document buffer and semantic navigation state while remaining independent working surfaces.
 
 ## Accessibility
+
 
 Accessibility is a core product requirement, not a separate mode or later add-on.
 
@@ -131,6 +260,7 @@ The accessibility system is still under active development and should **not** ye
 
 ## Project Philosophy
 
+
 > **Reader first.** Opening a Markdown file should feel like opening a document, not opening source code.
 
 > **One accessible product.** Accessibility should change interaction paths when necessary, not remove capability.
@@ -149,6 +279,7 @@ The accessibility system is still under active development and should **not** ye
 
 ## Technology Stack
 
+
 - **Electron** — desktop application shell
 - **React 19** — renderer UI
 - **TypeScript 6** — application code
@@ -163,72 +294,8 @@ The accessibility system is still under active development and should **not** ye
 - **Oxlint** — linting
 - **electron-builder** — desktop packaging
 
-## Requirements
-
-The current Electron toolchain expects **Node.js 22.12 or newer**.
-
-```bash
-node --version
-npm --version
-```
-
-## Getting Started
-
-```bash
-git clone <repository-url>
-cd sensiblemd
-npm install
-```
-
-Run the web renderer:
-
-```bash
-npm run dev
-```
-
-Run the desktop application:
-
-```bash
-npm run dev:desktop
-```
-
-## Development Commands
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start the Vite renderer development server |
-| `npm run dev:desktop` | Start Vite and launch Electron |
-| `npm run build` | Type-check and build the renderer |
-| `npm test` | Run the Vitest suite |
-| `npm run lint` | Run Oxlint |
-| `npm run preview` | Preview the production renderer |
-| `npm run package` | Build and package the Electron application |
-
-## Packaging
-
-Application ID:
-
-```text
-com.sensiblemd.app
-```
-
-Product name:
-
-```text
-SensibleMD
-```
-
-The current macOS target is a `.dmg` package.
-
-```bash
-npm run package
-```
-
-macOS `.md` file association and application-open lifecycle behavior are already being exercised in packaged builds.
-
-Signing, notarization, broader Windows/Linux validation, and release hardening remain ongoing work.
-
 ## Architecture Overview
+
 
 ```text
 Markdown file
@@ -260,6 +327,7 @@ The Electron renderer receives narrow application capabilities for opening, savi
 
 ## Desktop File Lifecycle
 
+
 Current desktop behavior is designed around these rules:
 
 - normal launch opens Home / no-document state,
@@ -275,6 +343,7 @@ Current desktop behavior is designed around these rules:
 Cross-platform lifecycle validation is still ongoing.
 
 ## Security Status
+
 
 SensibleMD opens user-controlled Markdown, so document content is treated as untrusted input.
 
@@ -299,6 +368,7 @@ Manual adversarial Markdown testing currently verifies that script tags and inli
 The application is **not yet independently security-audited** and the v0.1 prototype should still be treated as development software rather than a hardened production release.
 
 ## Testing
+
 
 Run:
 
@@ -346,6 +416,7 @@ Automated tests do not replace physical UI testing. Manual testing still include
 
 ## Dogfooding and Historical Bug Tracking
 
+
 SensibleMD is being actively dogfooded using packaged desktop builds.
 
 Bug reports are intentionally retained as **historical development records** rather than overwritten when fixes land. This makes it possible to follow:
@@ -383,6 +454,7 @@ See the repository dogfooding bug-tracker documents for the detailed historical 
 
 ## Current Project Status
 
+
 SensibleMD is approaching a **spec-complete v0.1 prototype**, but it is not finished software.
 
 The project has moved beyond isolated feature prototyping into repeated packaged-app dogfooding, regression testing, lifecycle validation, and interaction refinement.
@@ -399,6 +471,7 @@ The immediate goal is to make v0.1 coherent enough that real users can:
 Expect rough edges, incomplete UI polish, missing edge cases, and behavior that may change quickly.
 
 ## Contributing
+
 
 Contributions, testing, accessibility feedback, security review, and general product feedback are welcome.
 
@@ -432,6 +505,7 @@ When reporting an issue, include:
 
 ## Feedback for the v0.1 Prototype
 
+
 Useful task-based feedback includes:
 
 - Did opening a Markdown file behave the way you expected?
@@ -450,6 +524,7 @@ Useful task-based feedback includes:
 
 ## License
 
+
 SensibleMD is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
 
 You are free to use, study, modify, and redistribute SensibleMD under the terms of the GPL. Modified versions that are distributed must also provide their corresponding source code under a GPL-compatible license.
@@ -457,6 +532,10 @@ You are free to use, study, modify, and redistribute SensibleMD under the terms 
 Third-party dependencies remain under their respective licenses. See `THIRD_PARTY_LICENSES.md` for the current dependency license inventory.
 
 See `LICENSE` for the full license text.
+
+---
+
+**SensibleMD** is an experiment in making Markdown feel less like source code you preview and more like a document you can simply open, read, understand, and edit.
 
 ---
 
