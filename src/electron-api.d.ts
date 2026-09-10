@@ -46,12 +46,13 @@ interface Window {
     saveDocumentAs: (payload: {
       name: string;
       source: string;
-    }) => Promise<{ name: string; path: string } | null>;
+    }) => Promise<SensibleOpenedDocument | null>;
     saveRecoverySnapshot: (payload: {
       documentId: string;
       version: number;
       source: string;
     }) => Promise<{ version: number }>;
+    clearRecoverySnapshot: (documentId: string) => Promise<void>;
     loadRecoverySnapshot: (documentId: string) => Promise<{
       documentId: string;
       version: number;

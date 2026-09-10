@@ -48,7 +48,7 @@ export class FakeDesktop {
     documentId: string;
   }> = [];
   readonly recoveryRequests: Array<{
-    operation: "load" | "save";
+    operation: "load" | "save" | "clear";
     documentId: string;
   }> = [];
   recents: string[] = [];
@@ -106,7 +106,7 @@ export class FakeDesktop {
   /** Simulate an external editor writing the file and the watcher noticing. */
   emitExternalChange(source: string, filePath = this.authorizedPath) {
     if (filePath) this.files.set(filePath, source);
-    for (const listener of this.externalListeners) listener({ source });
+    if (filePath === this.authorizedPath) for (const listener of this.externalListeners) listener({ source });
   }
 
   install() {
@@ -208,8 +208,6 @@ export class FakeDesktop {
           return { name: basename(filePath) };
         }),
 
-      // Note: does not adopt the destination as the authorized document, matching the
-      // current main process. Sprint 2 changes that.
       saveDocumentAs: (payload: { name: string; source: string }) =>
         this.scheduler.schedule("document:save-as", () => {
           if (this.failures.saveAs)
@@ -218,7 +216,7 @@ export class FakeDesktop {
           const filePath = this.saveAsDialogResult;
           this.files.set(filePath, payload.source);
           this.writes.push({ path: filePath, source: payload.source });
-          return { name: basename(filePath), path: filePath };
+          return this.authorize(filePath);
         }),
 
       onExternalDocumentChange: (listener: ExternalChangeListener) => {
@@ -249,6 +247,14 @@ export class FakeDesktop {
             savedAt: new Date().toISOString(),
           });
           return { version: payload.version };
+        }),
+
+      clearRecoverySnapshot: (documentId: string) =>
+        this.scheduler.schedule("recovery:clear", () => {
+          this.recoveryRequests.push({ operation: "clear", documentId });
+          if (this.failures.recovery) throw new Error("Recovery could not be cleared.");
+          this.recoveryLatest.delete(documentId);
+          this.recoveryPrevious.delete(documentId);
         }),
 
       loadRecoverySnapshot: (documentId: string) =>

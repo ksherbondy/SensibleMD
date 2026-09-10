@@ -34,6 +34,7 @@ import {
   FileText,
   FolderOpen,
   Search,
+  Save,
   Settings2,
   Sparkles,
   X,
@@ -540,6 +541,10 @@ function DocumentWorkspace({
   const activeNodeId = navigationAnchor.nodeId;
   const [copyStatus, setCopyStatus] = useState("");
   const [appStatus, setAppStatus] = useState("");
+  const recoveryContext = useRef({ documentId: activeDocumentId, revision: 0 });
+  useLayoutEffect(() => {
+    recoveryContext.current = { documentId: activeDocumentId, revision: 0 };
+  }, [activeDocumentId]);
   const [recoverySnapshot, setRecoverySnapshot] = useState<{
     source: string;
     savedAt: string;
@@ -860,12 +865,16 @@ function DocumentWorkspace({
   useEffect(() => {
     const loadRecoverySnapshot = window.sensibleMD?.loadRecoverySnapshot;
     if (typeof loadRecoverySnapshot !== "function") return;
+    const context = recoveryContext.current;
+    const revision = context.revision;
+    let current = true;
     void loadRecoverySnapshot(activeDocumentId)
       .then((snapshot) => {
-        if (snapshot?.source && snapshot.source !== buffer.snapshot().text)
+        if (current && recoveryContext.current === context && context.revision === revision && snapshot?.source && snapshot.source !== buffer.snapshot().text)
           setRecoverySnapshot(snapshot);
       })
-      .catch(() => setAppStatus("Recovery check is temporarily unavailable."));
+      .catch(() => { if (current) setAppStatus("Recovery check is temporarily unavailable."); });
+    return () => { current = false; };
   }, [activeDocumentId]);
 
   useEffect(() => {
@@ -1470,13 +1479,39 @@ function DocumentWorkspace({
     setView("read");
     refreshRecentDocuments();
   };
+  const clearRecovery = async (documentId: string) => {
+    const context = recoveryContext.current;
+    const revision = context.documentId === documentId ? ++context.revision : context.revision;
+    if (!window.sensibleMD?.clearRecoverySnapshot) throw new Error("Recovery clearing unavailable");
+    await window.sensibleMD.clearRecoverySnapshot(documentId);
+    if (recoveryContext.current === context && context.documentId === documentId && context.revision === revision) setRecoverySnapshot(null);
+  };
+  const clearSavedRecovery = async (documentId: string) => {
+    try {
+      await clearRecovery(documentId);
+    } catch {
+      setAppStatus("Saved, but recovery data could not be cleared. It may appear again when you reopen the document.");
+    }
+  };
+  const discardRecovery = async () => {
+    try {
+      await clearRecovery(activeDocumentId);
+    } catch {
+      setAppStatus("Recovery could not be discarded. Please try again.");
+    }
+  };
+  const downloadOnly =
+    !(canSaveDirectly && typeof window.sensibleMD?.saveOpenedDocument === "function") &&
+    typeof window.sensibleMD?.saveDocumentAs !== "function";
+  const saveActionLabel = downloadOnly ? "Download copy" : "Save Markdown file";
   const saveFile = () => {
+    const savedDocumentId = activeDocumentId;
     const savedVersion = buffer.snapshot().version;
     const saveOpenedDocument = window.sensibleMD?.saveOpenedDocument;
     if (canSaveDirectly && typeof saveOpenedDocument === "function") {
       trackSave(
         saveOpenedDocument({ source })
-          .then(() => {
+          .then(async () => {
             if (buffer.snapshot().version !== savedVersion) {
               setAppStatus(
                 "Saved the earlier version. Newer changes remain open.",
@@ -1486,6 +1521,7 @@ function DocumentWorkspace({
             buffer.markSaved();
             setIsDirty(false);
             setAppStatus("Saved.");
+            await clearSavedRecovery(savedDocumentId);
           })
           .catch(() =>
             setAppStatus(
@@ -1499,19 +1535,27 @@ function DocumentWorkspace({
     if (typeof saveNativeDocument === "function") {
       trackSave(
         saveNativeDocument({ name: documentName, source })
-          .then((file) => {
-            if (file) {
-              if (buffer.snapshot().version !== savedVersion) {
-                setAppStatus(
-                  "Saved the earlier version. Newer changes remain open.",
-                );
-                return;
-              }
-              setDocumentName(file.name);
-              buffer.markSaved();
-              setIsDirty(false);
-              setAppStatus("Saved.");
-            }
+          .then(async (file) => {
+            if (!file) return;
+            const newId = asDocumentId(file.documentId);
+            const current = buffer.snapshot();
+            const clean = current.version === savedVersion;
+            setCollection((documents) => documents
+              .filter((document) => document.id !== newId || document.id === savedDocumentId)
+              .map((document) => document.id === savedDocumentId
+                ? { ...document, id: newId, name: file.name, source: current.text }
+                : document));
+            setActiveDocumentId(newId);
+            setActiveSessionId(asSessionId(file.sessionId));
+            setCanSaveDirectly(true);
+            setDocumentName(file.name);
+            if (clean) buffer.markSaved();
+            setIsDirty(!clean);
+            setRecoverySnapshot(null);
+            refreshRecentDocuments();
+            setAppStatus(clean ? "Saved." : "Saved the earlier version. Newer changes remain open.");
+            // The normal debounce writes recovery under newId only when dirty.
+            await clearSavedRecovery(savedDocumentId);
           })
           .catch(() =>
             setAppStatus(
@@ -1530,9 +1574,7 @@ function DocumentWorkspace({
       : `${documentName}.md`;
     link.click();
     URL.revokeObjectURL(url);
-    buffer.markSaved();
-    setIsDirty(false);
-    setAppStatus("Download started.");
+    setAppStatus("Download requested. The original file is unchanged.");
   };
   const closeDocument = async (completed = onClose): Promise<boolean> => {
     if (isDirty || buffer.snapshot().isDirty) {
@@ -1669,7 +1711,7 @@ function DocumentWorkspace({
     },
     {
       id: "file.save",
-      title: "Save Markdown File",
+      title: downloadOnly ? "Download copy" : "Save Markdown File",
       keywords: ["document", "download"],
       shortcut: "Cmd/Ctrl+S",
       scope: "global",
@@ -2073,7 +2115,8 @@ function DocumentWorkspace({
           <FileText size={16} />
           <span>{documentName}</span>
           <span className="saved">
-            <Check size={14} /> Saved locally
+            {!isDirty && <Check size={14} />}
+            {isDirty ? "Unsaved changes" : "No unsaved changes"}
           </span>
         </div>
         <div className="topbar-actions">
@@ -2100,10 +2143,10 @@ function DocumentWorkspace({
             className="icon-button"
             type="button"
             onClick={saveFile}
-            aria-label="Save Markdown file"
-            title="Save Markdown file"
+            aria-label={saveActionLabel}
+            title={saveActionLabel}
           >
-            <Download size={18} />
+            {downloadOnly ? <Download size={18} /> : <Save size={18} />}
           </button>
           <button
             className="icon-button"
@@ -2468,7 +2511,7 @@ function DocumentWorkspace({
                 from this document.
               </p>
               <div>
-                <button type="button" onClick={() => setRecoverySnapshot(null)}>
+                <button type="button" onClick={() => void discardRecovery()}>
                   Discard recovery
                 </button>
                 <button type="button" onClick={restoreRecoverySnapshot}>

@@ -158,18 +158,24 @@ async function rememberRecentFile(filePath) {
   return next
 }
 
-async function openAuthorizedDocument(event, filePath) {
+async function openAuthorizedDocument(event, filePath, isCurrent = () => true) {
   const documentId = await deriveDocumentId(filePath)
   const source = await fs.readFile(filePath, 'utf8')
-  await rememberRecentFile(filePath)
-  if (event.sender.isDestroyed()) throw new Error('The requesting window closed')
+  if (event.sender.isDestroyed() || !isCurrent()) throw new Error('The requesting window closed')
   const sessionId = createSessionId()
-  const watcher = watch(filePath, async () => {
+  // Watch the containing directory so atomic replacement does not leave the
+  // watcher attached to the previous inode. Only this document is read.
+  const watcher = watch(path.dirname(filePath), async (_eventType, filename) => {
+    if (filename && filename.toString() !== path.basename(filePath)) return;
     try {
       const changedSource = await fs.readFile(filePath, 'utf8')
       if (!event.sender.isDestroyed() && authorizedDocumentSessions.get(event.sender.id)?.sessionId === sessionId) event.sender.send('document:external-change', { source: changedSource })
     } catch {}
   })
+  try {
+    if (!isCurrent()) throw new Error('The active document changed')
+    await rememberRecentFile(filePath)
+  } catch (error) { watcher.close(); throw error }
   authorizedDocumentWatchers.get(event.sender.id)?.close()
   authorizedDocumentSessions.set(event.sender.id, { sessionId, documentId, filePath })
   authorizedDocumentWatchers.set(event.sender.id, watcher)
@@ -200,22 +206,43 @@ ipcMain.handle('document:save-opened', async (event, payload) => {
   return { name: path.basename(session.filePath) }
 })
 
-ipcMain.handle('document:save-as', async (_event, payload) => {
+ipcMain.handle('document:save-as', async (event, payload) => {
   if (!payload || typeof payload.source !== 'string' || typeof payload.name !== 'string') throw new Error('Invalid document save request')
+  const previousSession = authorizedDocumentSessions.get(event.sender.id)
+  const isCurrent = () => !event.sender.isDestroyed() && authorizedDocumentSessions.get(event.sender.id) === previousSession
   const result = await dialog.showSaveDialog({ defaultPath: payload.name.endsWith('.md') ? payload.name : `${payload.name}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] })
   if (result.canceled || !result.filePath) return null
+  if (!isCurrent()) throw new Error('The active document changed')
   await writeTextAtomically(result.filePath, payload.source)
-  return { name: path.basename(result.filePath), path: result.filePath }
+  return openAuthorizedDocument(event, result.filePath, isCurrent)
 })
+
+// Preserve invocation order for writes and deletion of each document's recovery.
+const recoveryOperations = new Map()
+function queueRecovery(documentId, operation) {
+  recoveryPath(documentId, 'latest')
+  const result = (recoveryOperations.get(documentId) ?? Promise.resolve()).catch(() => {}).then(operation)
+  recoveryOperations.set(documentId, result)
+  const cleanup = () => { if (recoveryOperations.get(documentId) === result) recoveryOperations.delete(documentId) }
+  result.then(cleanup, cleanup)
+  return result
+}
+
+ipcMain.handle('recovery:clear', (_event, documentId) => queueRecovery(documentId, async () => {
+  await fs.rm(recoveryPath(documentId, 'latest'), { force: true })
+  await fs.rm(recoveryPath(documentId, 'previous'), { force: true })
+}))
 
 ipcMain.handle('recovery:save', async (_event, payload) => {
   if (!payload || typeof payload.documentId !== 'string' || typeof payload.source !== 'string' || !Number.isInteger(payload.version)) throw new Error('Invalid recovery snapshot')
-  const latestPath = recoveryPath(payload.documentId, 'latest')
-  const previousPath = recoveryPath(payload.documentId, 'previous')
-  await fs.mkdir(path.dirname(latestPath), { recursive: true })
-  try { await fs.rename(latestPath, previousPath) } catch {}
-  await writeJsonAtomically(latestPath, { schemaVersion: 1, documentId: payload.documentId, version: payload.version, source: payload.source, savedAt: new Date().toISOString() })
-  return { version: payload.version }
+  return queueRecovery(payload.documentId, async () => {
+    const latestPath = recoveryPath(payload.documentId, 'latest')
+    const previousPath = recoveryPath(payload.documentId, 'previous')
+    await fs.mkdir(path.dirname(latestPath), { recursive: true })
+    try { await fs.rename(latestPath, previousPath) } catch {}
+    await writeJsonAtomically(latestPath, { schemaVersion: 1, documentId: payload.documentId, version: payload.version, source: payload.source, savedAt: new Date().toISOString() })
+    return { version: payload.version }
+  })
 })
 
 ipcMain.handle('recovery:load', async (_event, documentId) => {

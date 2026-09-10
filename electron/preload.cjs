@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('sensibleMD', Object.freeze({
   onExternalDocumentChange: (listener) => { const handler = (_event, change) => listener(change); ipcRenderer.on('document:external-change', handler); return () => ipcRenderer.removeListener('document:external-change', handler) },
   saveDocumentAs: (payload) => ipcRenderer.invoke('document:save-as', payload),
   saveRecoverySnapshot: (payload) => ipcRenderer.invoke('recovery:save', payload),
+  clearRecoverySnapshot: (documentId) => ipcRenderer.invoke('recovery:clear', documentId),
   loadRecoverySnapshot: (documentId) => ipcRenderer.invoke('recovery:load', documentId),
   loadDocumentState: (documentId) => ipcRenderer.invoke('state:load', documentId),
   saveDocumentState: (payload) => ipcRenderer.invoke('state:save', payload),
