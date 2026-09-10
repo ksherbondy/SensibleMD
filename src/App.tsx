@@ -4,7 +4,7 @@ import { usePageStep } from './core/use-page-step'
 import { useNavigationWork } from './core/use-navigation-work'
 import { useReadingObservation } from './core/use-reading-observation'
 //Framework and third-party packages
-import { type ReactNode, createContext, createElement, lazy, Suspense, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { type ReactNode, createContext, createElement, lazy, Suspense, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
@@ -115,8 +115,8 @@ function ReaderSurface({ source, headings, navigableNodes, blocks, mode, pages, 
   return <section className={`book-reader ${mode}`} data-columns={pageStep} aria-label={`${mode === 'spread' ? 'Two-page' : 'Single-page'} reading mode`}><div className="book-pages">{!pages.length && <p>No readable content.</p>}{visiblePages.map((page) => <article className="book-page" tabIndex={0} key={page.pageNumber} aria-label={`Page ${page.pageNumber}`}>{renderMarkdown(page)}<footer>Page {page.pageNumber}</footer></article>)}</div><div className="page-controls"><button type="button" className="icon-button" onClick={() => onPageIndex(Math.max(0, pageIndex - pageStep))} disabled={pageIndex === 0} aria-label="Previous page"><ChevronLeft size={18} /></button><span>Page {pages.length ? pageIndex + 1 : 0} of {pages.length}</span><button type="button" className="icon-button" onClick={() => onPageIndex(Math.min(Math.max(0, pages.length - 1), pageIndex + pageStep))} disabled={pageIndex + pageStep >= pages.length} aria-label="Next page"><ChevronRight size={18} /></button></div></section>
 }
 
-function PreviewSurface({ source, headings }: { source: string; headings: Heading[] }) {
-  return <article className="authoring-preview" aria-label="Rendered Markdown preview"><HeadingContext.Provider value={headings}><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={semanticHeadingComponents}>{source}</ReactMarkdown></HeadingContext.Provider></article>
+function PreviewSurface({ source, headings, navigableNodes }: { source: string; headings: Heading[]; navigableNodes: SemanticNode[] }) {
+  return <article className="authoring-preview" aria-label="Rendered Markdown preview"><ReaderNodeContext.Provider value={navigableNodes}><HeadingContext.Provider value={headings}><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={{ ...readerBlockComponents, ...semanticHeadingComponents }}>{source}</ReactMarkdown></HeadingContext.Provider></ReaderNodeContext.Provider></article>
 }
 
 function DocumentWorkspace({ initialDocument, onClose, prepareOpen }: { initialDocument?: OpenedReaderDocument; onClose: () => void; prepareOpen: React.RefObject<(() => Promise<boolean>) | null> }) {
@@ -199,6 +199,25 @@ function DocumentWorkspace({ initialDocument, onClose, prepareOpen }: { initialD
   const pages = paginateDocument(semanticDocument, readingMode === 'spread' ? 52 : 76)
   const pageStep = usePageStep(readingMode === 'spread')
   const pageIndex = Math.floor(pageForLocation(pages, navigationAnchor) / pageStep) * pageStep
+  const presentation = useRef({ view, readingMode })
+  const projectionLine = activeNode?.range.line
+  useLayoutEffect(() => {
+    if (presentation.current.view === view && presentation.current.readingMode === readingMode) return
+    const destination = { view, readingMode }
+    presentation.current = destination
+    if (!activeNodeId || projectionLine === undefined) return
+    // Presentation interprets the current anchor; it never writes a location.
+    // Both navigation freshness and the surface lifetime guard deferred work.
+    const currentNavigation = navigationWork.capture()
+    const isCurrent = () => presentation.current === destination && currentNavigation()
+    if (view !== 'read') setOutlineJump({ line: projectionLine, isCurrent })
+    navigationWork.schedule(() => {
+      if (!isCurrent() || view === 'write') return
+      const surface = document.querySelector(view === 'split' ? '.authoring-preview' : '.document-reader, .book-reader')
+      const target = surface && Array.from(surface.querySelectorAll('[id]')).find(element => element.id === activeNodeId || element.id === readerNodeId(activeNodeId))
+      target?.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }, { documentId: activeDocumentId, source })
+  }, [view, readingMode, activeNodeId, projectionLine, activeDocumentId, source, navigationWork])
   const chapterIndex = collection.findIndex((document) => document.id === activeDocumentId)
   const collectionWordCount = collection.reduce((total, document) => total + parseSemanticDocument(document.source, 0).wordCount, 0)
   const savedHeadings = bookmarkedHeadings(semanticDocument.headings, bookmarks).map((heading) => headings.find((item) => item.id === heading.id)).filter((heading): heading is Heading => Boolean(heading))
@@ -721,7 +740,7 @@ function DocumentWorkspace({ initialDocument, onClose, prepareOpen }: { initialD
         <p className="copy-status" aria-live="polite">{copyStatus}</p>
         <p className="app-status" aria-live="polite">{appStatus}</p>
         {view !== 'read' && <nav className="diagnostics-filter" aria-label="Diagnostic severity filter"><button type="button" className={findingFilter === 'all' ? 'selected' : ''} onClick={() => setFindingFilter('all')}>All</button><button type="button" className={findingFilter === 'error' ? 'selected' : ''} onClick={() => setFindingFilter('error')}>Errors</button><button type="button" className={findingFilter === 'warning' ? 'selected' : ''} onClick={() => setFindingFilter('warning')}>Warnings</button></nav>}
-        {view === 'read' ? <ReaderSurface source={source} headings={headings} navigableNodes={semanticDocument.navigableNodes} blocks={semanticDocument.nodes} pageStep={pageStep} mode={readingMode} pages={pages} pageIndex={pageIndex} onPageIndex={setPageAndContext} onInternalLink={followInternalLink} /> : <section className={`editor-layout ${view === 'split' ? 'split-layout' : ''}`} aria-label="Markdown authoring"><Suspense fallback={<p className="editor-loading">Loading source editor...</p>}><MarkdownEditor value={source} onChange={updateSource} cursorLine={editorLine} onCursorLineChange={setEditorLine} onObserveCursor={observeEditorCursor} onPromoteHeading={() => changeCurrentHeading('promote')} onDemoteHeading={() => changeCurrentHeading('demote')} jumpToLine={diagnosticJump?.line ?? null} jumpIsCurrent={diagnosticJump?.isCurrent} navigationJump={outlineJump} /></Suspense>{view === 'split' && <PreviewSurface source={source} headings={headings} />}<aside className="findings-panel"><div className="findings-heading"><Sparkles size={17} /><span>Authoring checks</span><strong>{findings.length}</strong></div>{findings.length ? findings.map((finding) => <button type="button" key={finding.id} className={`finding ${finding.severity}`} onClick={() => { navigationWork.invalidate(); setDiagnosticJump({ line: finding.line, isCurrent: navigationWork.capture() }) }}><span>{finding.ruleId} · {finding.confidence}</span><p>{finding.title}</p><small>Line {finding.line}</small></button>) : <div className="all-clear"><Check size={22} /><p>No structural issues found.</p></div>}</aside></section>}</main></div>
+        {view === 'read' ? <ReaderSurface source={source} headings={headings} navigableNodes={semanticDocument.navigableNodes} blocks={semanticDocument.nodes} pageStep={pageStep} mode={readingMode} pages={pages} pageIndex={pageIndex} onPageIndex={setPageAndContext} onInternalLink={followInternalLink} /> : <section className={`editor-layout ${view === 'split' ? 'split-layout' : ''}`} aria-label="Markdown authoring"><Suspense fallback={<p className="editor-loading">Loading source editor...</p>}><MarkdownEditor value={source} onChange={updateSource} cursorLine={editorLine} onCursorLineChange={setEditorLine} onObserveCursor={observeEditorCursor} onPromoteHeading={() => changeCurrentHeading('promote')} onDemoteHeading={() => changeCurrentHeading('demote')} jumpToLine={diagnosticJump?.line ?? null} jumpIsCurrent={diagnosticJump?.isCurrent} navigationJump={outlineJump} /></Suspense>{view === 'split' && <PreviewSurface source={source} headings={headings} navigableNodes={semanticDocument.navigableNodes} />}<aside className="findings-panel"><div className="findings-heading"><Sparkles size={17} /><span>Authoring checks</span><strong>{findings.length}</strong></div>{findings.length ? findings.map((finding) => <button type="button" key={finding.id} className={`finding ${finding.severity}`} onClick={() => { navigationWork.invalidate(); setDiagnosticJump({ line: finding.line, isCurrent: navigationWork.capture() }) }}><span>{finding.ruleId} · {finding.confidence}</span><p>{finding.title}</p><small>Line {finding.line}</small></button>) : <div className="all-clear"><Check size={22} /><p>No structural issues found.</p></div>}</aside></section>}</main></div>
     <footer className="statusbar"><span><span className="status-dot" /> Local prototype</span><span>Cmd/Ctrl + E: switch mode</span><span>Cmd/Ctrl + F: search</span></footer>
   </div>
 }

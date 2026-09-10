@@ -68,11 +68,15 @@ describe('N05 stale navigation work', () => {
       await scenario.enterMode('Write')
       await scenario.clickOutlineHeading('Beta')
       expect(scenario.editorCursorLine()).toBe(5)
-      await scenario.appendToEditor('\n\nChanged source.')
+      const changedSource = '# Intro\n\n' + source
+      await scenario.setEditorSource(changedSource)
+      await scenario.moveEditorCursorToLine(7)
       await scenario.enterMode('Read')
       await scenario.enterMode('Write')
-      expect(scenario.editorCursorLine()).toBe(1)
-      expect(scenario.editorSource()).toBe(source + '\n\nChanged source.')
+      // DOG2-001 projects the current anchor afresh: Beta is now line 7.
+      // Replaying the pre-edit jump would incorrectly select line 5.
+      expect(scenario.editorCursorLine()).toBe(7)
+      expect(scenario.editorSource()).toBe(changedSource)
       expect(scenario.isDirty()).toBe(true)
     } finally { scenario.unmount() }
   })
