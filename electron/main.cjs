@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, shell, screen } = require('electron')
 const fs = require('node:fs/promises')
 const { watch } = require('node:fs')
 const path = require('node:path')
@@ -11,6 +11,110 @@ const isDevelopment = process.argv.includes('--dev')
 const authorizedDocumentSessions = new Map()
 const authorizedDocumentWatchers = new Map()
 const recentFilesPath = () => path.join(app.getPath('userData'), 'recent-files.json')
+const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json')
+
+const DEFAULT_WINDOW_BOUNDS = {
+  width: 1280,
+  height: 860,
+}
+
+const MIN_WINDOW_WIDTH = 900
+const MIN_WINDOW_HEIGHT = 600
+let windowStateSaveTimer = null
+
+function rectanglesIntersect(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  )
+}
+
+function isValidWindowBounds(bounds) {
+  return (
+    bounds &&
+    Number.isFinite(bounds.x) &&
+    Number.isFinite(bounds.y) &&
+    Number.isFinite(bounds.width) &&
+    Number.isFinite(bounds.height) &&
+    bounds.width >= MIN_WINDOW_WIDTH &&
+    bounds.height >= MIN_WINDOW_HEIGHT
+  )
+}
+
+function loadWindowBounds() {
+  try {
+    const filePath = windowStatePath()
+    const source = require('node:fs').readFileSync(filePath, 'utf8')
+    const state = JSON.parse(source)
+
+    if (state?.schemaVersion !== 1 || !isValidWindowBounds(state.bounds)) {
+      return null
+    }
+
+    return state.bounds
+  } catch {
+    return null
+  }
+}
+
+function getRestorableWindowBounds() {
+  const savedBounds = loadWindowBounds()
+  if (!savedBounds) return null
+
+  const displays = screen.getAllDisplays()
+  const isVisible = displays.some((display) =>
+    rectanglesIntersect(savedBounds, display.workArea),
+  )
+
+  if (!isVisible) return null
+
+  const display = screen.getDisplayMatching(savedBounds)
+  const workArea = display.workArea
+
+  const width = Math.min(
+    Math.max(savedBounds.width, MIN_WINDOW_WIDTH),
+    workArea.width,
+  )
+  const height = Math.min(
+    Math.max(savedBounds.height, MIN_WINDOW_HEIGHT),
+    workArea.height,
+  )
+
+  const maxX = workArea.x + workArea.width - width
+  const maxY = workArea.y + workArea.height - height
+
+  return {
+    x: Math.min(Math.max(savedBounds.x, workArea.x), maxX),
+    y: Math.min(Math.max(savedBounds.y, workArea.y), maxY),
+    width,
+    height,
+  }
+}
+
+function scheduleWindowBoundsSave(window) {
+  if (
+    window.isDestroyed() ||
+    window.isMinimized() ||
+    window.isMaximized() ||
+    window.isFullScreen()
+  ) {
+    return
+  }
+
+  const bounds = window.getBounds()
+
+  clearTimeout(windowStateSaveTimer)
+  windowStateSaveTimer = setTimeout(() => {
+    writeJsonAtomically(windowStatePath(), {
+      schemaVersion: 1,
+      bounds,
+    }).catch((error) => {
+      console.error('Could not save window state:', error)
+    })
+  }, 200)
+}
 
 function metadataPath(documentId) {
   if (!/^[a-z0-9-]{1,80}$/i.test(documentId)) throw new Error('Invalid document identifier')
@@ -137,11 +241,12 @@ ipcMain.handle('state:save', async (_event, payload) => {
 })
 
 function createWindow() {
+  const restoredBounds = getRestorableWindowBounds()
+
   const window = new BrowserWindow({
-    width: 1280,
-    height: 860,
-    minWidth: 900,
-    minHeight: 600,
+    ...(restoredBounds ?? DEFAULT_WINDOW_BOUNDS),
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     title: 'SensibleMD',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -150,6 +255,9 @@ function createWindow() {
       sandbox: true,
     },
   })
+
+  window.on('move', () => scheduleWindowBoundsSave(window))
+  window.on('resize', () => scheduleWindowBoundsSave(window))
 
   const contentsId = window.webContents.id
   window.webContents.once('destroyed', () => {
