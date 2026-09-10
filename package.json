@@ -2,6 +2,8 @@
   "name": "sensiblemd",
   "private": true,
   "version": "0.0.0",
+  "description": "A reader-first desktop Markdown application for macOS, Windows, and Linux.",
+  "author": "K. Sherbondy",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -9,10 +11,18 @@
     "dev:desktop": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:5175 && electron . --dev\"",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "package": "npm run build && electron-builder",
-    "package:local": "npm run build && npx electron-builder --mac --dir --arm64",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package:local": "node scripts/package-local.mjs",
+    "package:mac:arm64": "npm run build && electron-builder --mac dmg --arm64",
+    "package:mac:x64": "npm run build && electron-builder --mac dmg --x64",
+    "package:win:x64": "npm run build && electron-builder --win nsis --x64",
+    "package:win:arm64": "npm run build && electron-builder --win nsis --arm64",
+    "package:linux:x64": "npm run build && electron-builder --linux AppImage deb --x64",
+    "package:linux:arm64": "npm run build && electron-builder --linux AppImage deb --arm64",
+    "package:mac:dir": "npm run build && electron-builder --mac --dir",
+    "package:win:dir": "npm run build && electron-builder --win --dir",
+    "package:linux:dir": "npm run build && electron-builder --linux --dir"
   },
   "build": {
     "appId": "com.sensiblemd.app",
@@ -27,9 +37,14 @@
       "icon": "src/assets/icons/icon.icns"
     },
     "win": {
+      "target": "nsis",
       "icon": "src/assets/icons/icon.ico"
     },
     "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "src/assets/icons/icon.png"
     }
   },
