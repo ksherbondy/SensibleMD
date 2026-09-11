@@ -1512,10 +1512,10 @@ function DocumentWorkspace({
       setAppStatus("Recovery could not be discarded. Please try again.");
     }
   };
-  const downloadOnly =
+  const saveUnavailable =
     !(canSaveDirectly && typeof window.sensibleMD?.saveOpenedDocument === "function") &&
     typeof window.sensibleMD?.saveDocumentAs !== "function";
-  const saveActionLabel = downloadOnly ? "Download copy" : "Save Markdown file";
+  const saveEnabled = !saveUnavailable && (isDirty || !canSaveDirectly);
   const saveFile = () => {
     const savedDocumentId = activeDocumentId;
     const savedVersion = buffer.snapshot().version;
@@ -1577,6 +1577,9 @@ function DocumentWorkspace({
       );
       return;
     }
+    setAppStatus("Saving is unavailable here. Use Download copy to export a copy.");
+  };
+  const downloadCopy = () => {
     const blob = new Blob([source], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1756,12 +1759,21 @@ function DocumentWorkspace({
     },
     {
       id: "file.save",
-      title: downloadOnly ? "Download copy" : "Save Markdown File",
-      keywords: ["document", "download"],
+      title: "Save",
+      keywords: ["document", "save"],
       shortcut: "Cmd/Ctrl+S",
       scope: "global",
-      enabled: true,
+      enabled: saveEnabled,
+      disabledReason: saveEnabled ? undefined : saveUnavailable ? "Native saving is unavailable. Use Download copy to export." : "No unsaved changes.",
       execute: saveFile,
+    },
+    {
+      id: "file.downloadCopy",
+      title: "Download copy",
+      keywords: ["document", "export", "download"],
+      scope: "global",
+      enabled: true,
+      execute: downloadCopy,
     },
     {
       id: "reader.nextHeading",
@@ -2188,10 +2200,20 @@ function DocumentWorkspace({
             className="icon-button"
             type="button"
             onClick={saveFile}
-            aria-label={saveActionLabel}
-            title={saveActionLabel}
+            disabled={!saveEnabled}
+            aria-label="Save"
+            title="Save"
           >
-            {downloadOnly ? <Download size={18} /> : <Save size={18} />}
+            <Save size={18} />
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={downloadCopy}
+            aria-label="Download copy"
+            title="Download copy"
+          >
+            <Download size={18} />
           </button>
           <button
             className="icon-button"

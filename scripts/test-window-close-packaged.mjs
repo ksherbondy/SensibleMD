@@ -64,10 +64,30 @@ try {
   await evaluate(`smokeElectron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [${JSON.stringify(file)}] }); globalThis.dialogCount = 0; globalThis.dialogResponse = 2; smokeElectron.dialog.showMessageBox = async () => { dialogCount++; return { response: dialogResponse }; };`);
   await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Open Markdown')).click()`);
   await until(async () => (await renderer('document.body.innerText')).includes('Original'));
+  assert.deepEqual(await renderer(`Array.from(document.querySelectorAll('.topbar-actions button')).filter(b => ['Save', 'Download copy'].includes(b.getAttribute('aria-label'))).map(b => ({label: b.getAttribute('aria-label'), title: b.title, disabled: b.disabled, saveIcon: !!b.querySelector('.lucide-save'), downloadIcon: !!b.querySelector('.lucide-download')}))`), [
+    {label: 'Save', title: 'Save', disabled: true, saveIcon: true, downloadIcon: false},
+    {label: 'Download copy', title: 'Download copy', disabled: false, saveIcon: false, downloadIcon: true},
+  ]);
+  console.log('PASS separate toolbar Save and Download copy icons, labels and enabled states');
   await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Write').click()`);
   await until(() => renderer(`!!document.querySelector('.cm-content')`));
   await renderer(`document.querySelector('.cm-content').focus()`);
   await evaluate(`smokeWindow.webContents.insertText('edited ')`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'true'`));
+  const exported = path.join(profile, 'export.md');
+  await evaluate(`globalThis.downloadDone = false; smokeWindow.webContents.session.once('will-download', (_event, item) => { item.setSavePath(${JSON.stringify(exported)}); item.once('done', (_event, state) => { downloadDone = state; }); });`);
+  await renderer(`document.querySelector('[aria-label="Download copy"]').click()`);
+  await until(() => evaluate(`downloadDone === 'completed'`));
+  assert.match(await readFile(exported, 'utf8'), /edited/);
+  assert.equal(await readFile(file, 'utf8'), '# Original\n\nText');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'true');
+  console.log('PASS real Download copy exports edits, preserves original and stays dirty');
+  await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'false'`));
+  assert.match(await readFile(file, 'utf8'), /edited/);
+  console.log('PASS toolbar Save modifies original and marks document clean');
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('more ')`);
   await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'true'`));
   await evaluate('smokeWindow.close(); smokeWindow.close()');
   await until(() => evaluate('dialogCount === 1'));

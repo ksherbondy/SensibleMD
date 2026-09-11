@@ -29,7 +29,7 @@ describe("DOG-001 Close Document", () => {
         screen.queryByRole("complementary", { name: "Document outline" }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("button", { name: "Save Markdown file" }),
+        screen.queryByRole("button", { name: "Save" }),
       ).not.toBeInTheDocument();
       expect(document.querySelector(".app-shell")).not.toHaveAttribute(
         "data-document-id",

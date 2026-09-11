@@ -82,6 +82,12 @@ textarea:focus-visible {
   outline: 3px solid #e7a73e;
   outline-offset: 2px;
 }
+.topbar-actions .icon-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: transparent;
+}
+
 .icon-button.small {
   width: 28px;
   height: 28px;

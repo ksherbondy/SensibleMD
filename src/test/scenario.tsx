@@ -223,7 +223,7 @@ export async function startScenario(
     },
 
     openDocument: () => clickByName("Open Markdown file"),
-    save: () => clickByName("Save Markdown file"),
+    save: () => clickByName("Save"),
 
     enterMode: async (mode) => {
       const group = screen.getByRole("group", { name: "Document mode" });
