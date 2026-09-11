@@ -65,6 +65,8 @@ export class FakeDesktop {
     state: false,
     recovery: false,
   };
+  closeDecisionListener?: Parameters<NonNullable<SensibleAPI["onWindowCloseDecision"]>>[0];
+  closeResults: Array<{ id: string; allow: boolean }> = [];
   private osListener:
     | ((request: { id: string; name: string }) => void)
     | undefined;
@@ -150,6 +152,11 @@ export class FakeDesktop {
   private createApi(): SensibleAPI {
     return {
       platform: this.platform,
+      onWindowCloseDecision: (listener) => {
+        this.closeDecisionListener = listener;
+        return () => { this.closeDecisionListener = undefined; };
+      },
+      completeWindowClose: (id, allow) => { this.closeResults.push({ id, allow }); },
 
       onOsOpenRequest: (listener) => {
         this.osListener = listener;

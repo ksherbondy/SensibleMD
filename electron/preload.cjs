@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('sensibleMD', Object.freeze({
   platform: process.platform,
+  onWindowCloseDecision: (listener) => { const handler = (_event, request) => listener(request); ipcRenderer.on('window:close-decision', handler); return () => ipcRenderer.removeListener('window:close-decision', handler) },
+  completeWindowClose: (id, allow) => ipcRenderer.send('window:close-complete', { id, allow }),
   onOsOpenRequest: (listener) => { const handler = (_event, request) => listener(request); ipcRenderer.on('document:os-open-request', handler); ipcRenderer.send('document:os-ready'); return () => ipcRenderer.removeListener('document:os-open-request', handler) },
   openOsDocument: (id) => ipcRenderer.invoke('document:os-open', id),
   completeOsOpen: (id) => ipcRenderer.send('document:os-complete', id),

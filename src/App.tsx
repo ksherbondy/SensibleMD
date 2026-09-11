@@ -1,3 +1,4 @@
+import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
 import { rehypeBookPage } from "./core/page-render";
 import { usePageStep } from "./core/use-page-step";
@@ -541,6 +542,7 @@ function DocumentWorkspace({
   const activeNodeId = navigationAnchor.nodeId;
   const [copyStatus, setCopyStatus] = useState("");
   const [appStatus, setAppStatus] = useState("");
+  const windowDiscard = useRef<{ documentId: string; version: number } | null>(null);
   const recoveryContext = useRef({ documentId: activeDocumentId, revision: 0 });
   useLayoutEffect(() => {
     recoveryContext.current = { documentId: activeDocumentId, revision: 0 };
@@ -849,6 +851,7 @@ function DocumentWorkspace({
     if (!isDirty || typeof saveRecoverySnapshot !== "function") return;
     const snapshot = buffer.snapshot();
     const timer = window.setTimeout(() => {
+      if (windowDiscard.current?.documentId === activeDocumentId && windowDiscard.current.version === snapshot.version) return;
       void saveRecoverySnapshot({
         documentId: activeDocumentId,
         version: snapshot.version,
@@ -1587,6 +1590,37 @@ function DocumentWorkspace({
   };
   // Keep the existing listener connected to the latest committed save lifecycle.
   useLayoutEffect(() => { keyboardSave.current = saveFile; });
+  useWindowClose({
+    snapshot: () => ({ documentId: activeDocumentId, ...buffer.snapshot() }),
+    saving: () => pendingSaves.current.size > 0,
+    save: async () => {
+      if (!pendingSaves.current.size) saveFile();
+      await Promise.allSettled([...pendingSaves.current]);
+    },
+    discard: async (snapshot) => {
+      windowDiscard.current = snapshot;
+      try {
+        await clearRecovery(snapshot.documentId);
+        if (recoveryContext.current.documentId !== snapshot.documentId) {
+          windowDiscard.current = null;
+          return false;
+        }
+        const current = buffer.snapshot();
+        if (current.version !== snapshot.version) {
+          windowDiscard.current = null;
+          await window.sensibleMD?.saveRecoverySnapshot({ documentId: activeDocumentId, version: current.version, source: current.text });
+          setAppStatus("Newer changes remain open. Try closing again.");
+          return false;
+        }
+        return true;
+      } catch {
+        windowDiscard.current = null;
+        setAppStatus("Recovery could not be discarded. Your edits are still open. Please try again.");
+        return false;
+      }
+    },
+    status: setAppStatus,
+  });
   const closeDocument = async (completed = onClose): Promise<boolean> => {
     if (isDirty || buffer.snapshot().isDirty) {
       setAppStatus("Save your changes before closing this document.");

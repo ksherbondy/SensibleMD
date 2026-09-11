@@ -27,6 +27,8 @@ interface SensibleOpenedDocument {
 interface Window {
   sensibleMD?: {
     platform: string;
+    onWindowCloseDecision?: (listener: (request: { id: string; choice: "save" | "discard" | "cancel" }) => void) => () => void;
+    completeWindowClose?: (id: string, allow: boolean) => void;
     onOsOpenRequest?: (
       listener: (request: { id: string; name: string }) => void,
     ) => () => void;

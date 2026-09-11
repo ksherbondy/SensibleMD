@@ -1,3 +1,4 @@
+const { installWindowCloseLifecycle } = require('./window-close-lifecycle.cjs')
 const { app, BrowserWindow, dialog, ipcMain, shell, screen } = require('electron')
 const fs = require('node:fs/promises')
 const { watch } = require('node:fs')
@@ -282,6 +283,8 @@ function createWindow() {
       sandbox: true,
     },
   })
+
+  installWindowCloseLifecycle({ app, window, ipcMain, dialog })
 
   window.on('move', () => scheduleWindowBoundsSave(window))
   window.on('resize', () => scheduleWindowBoundsSave(window))
