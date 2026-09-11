@@ -357,18 +357,20 @@ function ReaderSurface({
         {visiblePages.map((page) => (
           <article
             className="book-page"
-            tabIndex={0}
             key={page.pageNumber}
             aria-label={`Page ${page.pageNumber}`}
           >
-            <div className="page-content">{renderMarkdown(page)}</div>
-            <footer>Page {page.pageNumber}</footer>
+            <div
+              className={`page-content${page.oversized ? " oversized-block" : ""}`}
+              tabIndex={page.oversized ? 0 : undefined}
+              role={page.oversized ? "region" : undefined}
+              aria-label={page.oversized ? "Scrollable oversized content" : undefined}
+            >{renderMarkdown(page)}</div>
           </article>
         ))}
       </div>
       <article className="book-page pagination-measurement" ref={measurementRef} aria-hidden="true" inert>
         <div className="page-content">{renderMarkdown(undefined, true)}</div>
-        <footer>Page 0000</footer>
       </article>
       <div className="page-controls">
         <button

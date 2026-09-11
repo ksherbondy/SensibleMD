@@ -8,8 +8,8 @@ export function paginateTestDocument(document: SemanticDocument, availableHeight
     height: node.type === 'heading' ? 20 : 100, marginTop: 0, marginBottom: 0,
   }])) });
 }
-export const testPageGeometry = { width: 760, height: 150, blockScale: 1, unavailable: false };
-export function resetPageGeometry() { Object.assign(testPageGeometry, { width: 760, height: 150, blockScale: 1, unavailable: false }); }
+export const testPageGeometry = { width: 760, height: 130, blockScale: 1, unavailable: false };
+export function resetPageGeometry() { Object.assign(testPageGeometry, { width: 760, height: 130, blockScale: 1, unavailable: false }); }
 export class ControlledResizeObserver {
   static instances: ControlledResizeObserver[] = [];
   targets = new Set<Element>();
@@ -24,7 +24,6 @@ export function installPaginationGeometry() {
   const originalRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function () {
     if (this.matches('.book-pages')) return new DOMRect(0, 0, testPageGeometry.width, testPageGeometry.unavailable ? 0 : testPageGeometry.height);
-    if (this.matches('.pagination-measurement > footer')) return new DOMRect(0, 0, testPageGeometry.width, 20);
     if (this.matches('.pagination-measurement > .page-content > *')) return new DOMRect(0, 0, testPageGeometry.width, (/^H[1-6]$/.test(this.tagName) ? 20 : 100) * testPageGeometry.blockScale);
     return originalRect.call(this);
   };

@@ -53,7 +53,6 @@ Usable content height is:
 ```
 grid border-box height − grid vertical padding
 − page vertical padding and borders
-− footer rendered height and vertical margins
 ```
 
 Page width comes from the first resolved CSS grid track. The offscreen page gets
@@ -66,8 +65,8 @@ pages. No TypeScript page-height/padding constants mirror CSS values.
 margins cannot collapse differently on a page boundary: each block consumes its
 rendered border-box height plus computed top/bottom margins, identically in
 measurement and visible flow. There is no additional inter-block flex gap.
-The footer is outside this flow and its full margin box is reserved separately.
-The same stable scrollbar gutter avoids a width change for overflowing pages.
+There is no internal page footer or page-number allowance. The content region
+reserves the same scrollbar gutter in measurement and visible flow.
 
 Headings, paragraphs, lists, blockquotes, code, tables and thematic breaks are
 matched to their source-backed DOM IDs. Generated endnotes are measured as an
@@ -116,17 +115,47 @@ Page/Spread and content-width changes also invalidate measurement. Geometry
 changes repack the derived page map without writing the semantic reading anchor,
 dirty state, or source.
 
+## Fixed-sheet vertical geometry
+
+The explicit vertical cleanup supersedes Phase 1's page-level overflow. Previously,
+the reader used `calc(100svh - 106px)` and each physical page scrolled around an
+internal page-number footer. Now the existing `.main-area` flex layout supplies the
+space left after the actual toolbar; `.book-reader` fills that remaining area.
+No new outer wrapper or authoritative navigation state was introduced.
+
+The physical page-grid height is the reader's available height minus a 24px top
+gap, an equal 24px gap before navigation, and the external 44px navigation area.
+The page grid has a zero minimum and a fixed flex allocation; both Spread sheets
+stretch to its one row and use height: 100%. Content cannot grow or shrink them.
+The outer app remains viewport-bound, including at narrow widths, while physical
+page sizing comes from the central container rather than a window-height formula.
+
+Visible and measurement pages omit the internal footer, number, and separator.
+Measurement subtracts only page padding and borders from actual grid height.
+The external `Page X of Y` navigation remains. Accessible article labels identify
+individual sheets without adding visible numbering. An oversized atomic group
+(including its attached heading or endnotes) is flagged by the measured paginator;
+only that group receives scrolling and a keyboard-focusable named region.
+
+The new regression first failed because measurement required a footer and the
+rendered page still contained internal numbering. Packaged macOS checks now prove
+balanced gaps, aligned Spread sheets, zero page scroll even for oversized content,
+identical short/full/oversized sheet heights, and ordinary content fitting without
+clipping. Existing outline/panel/resize and semantic-continuity checks also pass.
+Save, Download, close/quit, source identities, and contrast styling are unchanged.
+
 ## Oversized blocks and Phase 2 limits
 
 Heading runs remain with the next whole block. A group taller than an empty page
-is placed once on that page; the loop always advances. The page is keyboard
-focusable and vertically scrollable. Code retains its existing wrapping/overflow
-behavior, tables have horizontal overflow, and images stay within page width and
-can extend the scrollable page vertically.
+is placed once on that page; the loop always advances. Only this oversized atomic
+group receives a bounded, keyboard-focusable scrolling region inside the sheet.
+The sheet itself uses overflow: clip and cannot scroll, even programmatically.
+Code retains its existing wrapping/overflow behavior, tables have horizontal
+overflow, and images stay within page width.
 
 No supported block type requires fragmentation merely to remain reachable.
 However, a long paragraph/list/table/code block/blockquote/image can occupy a
-scrolling page, and heading grouping may leave unused space. Phase 2 still needs
+scrolling content region, and heading grouping may leave unused space. Phase 2 still needs
 content-preserving fragment layout if those blocks should span physical pages.
 Generated footnotes are one trailing group, not individually paginated endnotes.
 
@@ -147,7 +176,7 @@ Test files added/updated:
   complete block coverage, oversized groups, missing geometry and endnotes.
 - `src/test/measured-pagination.test.tsx`: settings/resize/font/content invalidation,
   semantic target retention, readiness placeholder, stale callbacks, stable frames,
-  unique IDs and exact padding/border/footer subtraction.
+  unique IDs, footer-free padding/border subtraction, and oversized-region focus.
 - `src/test/pagination-geometry.ts`, `src/test/setup.ts`: explicit synthetic DOM
   geometry and controlled observer for jsdom. This code is test-only and is never
   a fallback in the application.
@@ -162,15 +191,15 @@ Test files added/updated:
 Results:
 
 - Latest focused measured-pagination, pagination-reader and position-continuity suites:
-  **23 passed** across three files.
-- Full suite: **212 passed, 70 existing TODO**, all 30 test files passed.
+  **29 passed** across four files (including core measured-pagination).
+- Full suite: **214 passed, 70 existing TODO**, all 30 test files passed.
 - TypeScript/Vite build: **PASS**.
 - Lint: **PASS with existing warnings**; no new warnings in pagination code.
 - Diff whitespace and packaged-script syntax checks: **PASS**.
 - Local macOS arm64 packaging: **PASS**, unsigned local verification build.
 - Packaged Chromium layout: **PASS** with the dev server unused (`file://` load).
-  Font scale changed page count **9 → 25**, line spacing **9 → 13**, content width
-  **17 → 9**, and window geometry **13 → 9** for the same Markdown. The selected
+  Font scale changed page count **6 → 17**, line spacing **9 → 13**, content width
+  **13 → 9**, and window geometry **13 → 9** for the same Markdown. The selected
   section remained visible through reflow and Page/Spread changes.
 - Packaged container-only changes: **PASS**. In both Page and Spread, closing the
   outline expanded page tracks and recomputed the gutter with unchanged window
@@ -178,11 +207,11 @@ Results:
   to one column and expanded to two after closing the outline. Simulated panel
   resizing also recomputed geometry and retained the target.
 - Packaged exact coverage: **37/37 source blocks once each**; ordinary page content
-  plus margins/footer fit the measured page height.
+  plus margins fit the usable content height without clipping.
 - Packaged font-completion/rapid-resize checks: **PASS**, no observer errors.
 - Packaged late image-size repagination: **PASS**; the whole image was scrollable.
 - Packaged oversized paragraph/code/list/blockquote/table checks: **PASS**, whole
-  content retained on one scrollable page, including end markers. Dirty state
+  content retained in one inner scrolling region, including end markers. Dirty state
   remained unchanged.
 
 Run the packaged checks after building with `npm run package:mac:dir`:

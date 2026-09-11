@@ -11,6 +11,8 @@ export interface BookPage {
   pageNumber: number;
   fragments: PageFragment[];
   estimatedWords: number;
+  /** One atomic group exceeds the sheet; only this group may scroll. */
+  oversized?: boolean;
 }
 
 export interface BlockGeometry {
@@ -45,6 +47,7 @@ export function paginateDocument(document: SemanticDocument, geometry: PageGeome
         pageNumber: pages.length + 1,
         fragments,
         estimatedWords: wordCount,
+        oversized: usedHeight > geometry.availableHeight,
       });
     fragments = [];
     wordCount = 0;

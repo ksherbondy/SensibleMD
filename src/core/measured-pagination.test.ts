@@ -15,6 +15,8 @@ it('includes non-collapsing margins and keeps oversized atomic blocks exactly on
   const blocks = Object.fromEntries(document.nodes.map(node => [node.id, { height: node.type === 'paragraph' ? 1000 : 40, marginTop: 10, marginBottom: 10 }]));
   const pages = paginateDocument(document, { availableHeight: 100, blocks });
   expect(pages).toHaveLength(6);
+  expect(pages[0].oversized).toBe(true);
+  expect(pages.slice(1).every(page => !page.oversized)).toBe(true);
   expect(pages[0].fragments).toHaveLength(2); // Heading remains with oversized paragraph.
   expect(pages.flatMap(p => p.fragments.map(f => f.nodeId))).toEqual(document.nodes.map(n => n.id));
   expect(new Set(pages.flatMap(p => p.fragments.map(f => f.nodeId))).size).toBe(document.nodes.length);

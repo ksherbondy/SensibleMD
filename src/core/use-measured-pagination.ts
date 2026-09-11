@@ -18,11 +18,10 @@ export function measurePageGeometry(viewport: HTMLElement, surface: HTMLElement,
   const widthValue = `${width}px`;
   if (surface.style.width !== widthValue) surface.style.width = widthValue;
   const page = getComputedStyle(surface);
-  const footer = surface.querySelector(':scope > footer');
   const body = surface.querySelector(':scope > .page-content');
-  if (!footer || !body) return null;
+  if (!body) return null;
   const availableHeight = height - pixels(page.paddingTop) - pixels(page.paddingBottom)
-    - pixels(page.borderTopWidth) - pixels(page.borderBottomWidth) - consumedHeight(box(footer));
+    - pixels(page.borderTopWidth) - pixels(page.borderBottomWidth);
   if (availableHeight <= 0) return null;
   const blocks: PageGeometry['blocks'] = {};
   const children = Array.from(body.children);

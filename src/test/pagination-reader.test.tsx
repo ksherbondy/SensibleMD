@@ -34,7 +34,7 @@ describe("DOG-008 paginated reader", () => {
       await scenario.setReadingLayout("Page");
       expect(scenario.visiblePageLabel()).toBe("Page 1 of 1");
       const page = screen.getByRole("article", { name: "Page 1" });
-      expect(page).toHaveAttribute("tabindex", "0");
+      expect(page).not.toHaveAttribute("tabindex");
       expect(page.querySelectorAll("p")).toHaveLength(1);
       expect(page.querySelector("strong")).toHaveTextContent("bold");
       expect(page.querySelector("br")).not.toBeNull();

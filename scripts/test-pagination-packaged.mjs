@@ -90,7 +90,34 @@ try {
   const count = () => renderer(`Number(document.querySelector('.page-controls span').textContent.split('of')[1])`);
   const anchor = async () => { await renderer(`Array.from(document.querySelectorAll('.outline-item')).find(b => b.textContent.includes('Section 6')).click()`); await settle(); };
   const anchorVisible = () => renderer(`(() => { const button = document.querySelector('.outline-item[aria-current="location"]'); return button?.textContent.includes('Section 6') && Array.from(document.querySelectorAll('.book-pages h1')).some(h => h.textContent === 'Section 6'); })()`);
+  const verifySheets = async () => {
+    const g = await renderer(`(() => {
+      const reader = document.querySelector('.book-reader');
+      const nav = reader.querySelector('.page-controls').getBoundingClientRect();
+      const toolbar = document.querySelector('.reader-toolbar').getBoundingClientRect();
+      const sheets = Array.from(reader.querySelectorAll('.book-pages .book-page'));
+      return sheets.map(p => {
+        const rect = p.getBoundingClientRect(); const css = getComputedStyle(p);
+        p.scrollTop = p.scrollHeight;
+        return { height: rect.height, top: rect.top, topGap: rect.top - toolbar.bottom,
+          bottomGap: nav.top - rect.bottom, overflow: css.overflowY, scroll: p.scrollTop,
+          footer: !!p.querySelector('footer'), internalNumber: /Page \\d/.test(p.textContent) };
+      });
+    })()`);
+    assert.ok(g.length > 0);
+    for (const sheet of g) {
+      assert.ok(sheet.height > 0);
+      assert.equal(sheet.overflow, 'clip'); assert.equal(sheet.scroll, 0);
+      assert.equal(sheet.footer, false); assert.equal(sheet.internalNumber, false);
+      assert.ok(sheet.topGap >= 20 && sheet.bottomGap >= 20, JSON.stringify(sheet));
+      assert.ok(Math.abs(sheet.topGap - sheet.bottomGap) < 1, 'balanced outer gaps');
+      assert.equal(sheet.height, g[0].height); assert.equal(sheet.top, g[0].top);
+    }
+    assert.match(await renderer(`document.querySelector('.page-controls').textContent`), /Page \d+ of \d+/);
+    return g[0].height;
+  };
   await mode('Page');
+  await verifySheets();
   await anchor();
   await preference('Text size', 85); const small = await count();
   await preference('Text size', 150); const large = await count();
@@ -114,10 +141,12 @@ try {
   await evaluate('smokeWindow.setSize(1100, 900)'); await settle();
   for (const layout of ['Page', 'Spread']) {
     await mode(layout); await anchor();
+    const sheetHeight = await verifySheets();
     const before = await geometry();
     const bounds = await evaluate('smokeWindow.getBounds()');
     await renderer(`document.querySelector('[aria-label="Close outline"]').click()`); await settle();
     const after = await geometry();
+    assert.equal(await verifySheets(), sheetHeight);
     assert.ok(after.width > before.width, 'closing outline must expand available page grid');
     assert.ok(after.tracks[0] > before.tracks[0], 'page tracks must expand');
     assert.ok(after.gap > before.gap, 'gutter must follow reader container');
@@ -151,19 +180,30 @@ try {
   const model = (await import('../src/core/semantic-document.ts')).parseSemanticDocument(markdown, 0);
   const expected = model.nodes.map(n => n.type === 'heading' ? n.id : `reader-node-${n.id}`);
   const actual = [];
+  const fixedHeight = await verifySheets();
   for (let page = 0; page < await count(); page++) {
+    assert.equal(await verifySheets(), fixedHeight, "short and full sheets retain identical height");
     actual.push(...await renderer(`Array.from(document.querySelectorAll('.book-pages .page-content > *')).map(e => e.id)`));
-    assert.equal(await renderer(`Array.from(document.querySelectorAll('.book-pages .book-page')).every(p => p.scrollHeight <= p.clientHeight + 2)`), true, 'ordinary pages must fit their measured geometry');
+    assert.equal(await renderer(`Array.from(document.querySelectorAll('.book-pages .page-content')).every(p => !p.classList.contains('oversized-block') && p.scrollHeight <= p.clientHeight + 2)`), true, 'ordinary pages must fit their measured geometry');
     if (page + 1 < await count()) { await renderer(`document.querySelector('[aria-label="Next page"]').click()`); await settle(); }
   }
   assert.deepEqual(actual, expected);
-  console.log(`PASS ${expected.length} semantic blocks rendered exactly once; normal pages fit including margins/footer`);
+  console.log(`PASS ${expected.length} semantic blocks rendered exactly once; normal pages fit including margins and padding`);
   const stable = await count();
   await renderer(`document.fonts.dispatchEvent(new Event('loadingdone'))`); await settle();
   assert.equal(await count(), stable);
   await evaluate('for (let i = 0; i < 12; i++) smokeWindow.setSize(1100 + i * 20, 820 + i * 10)'); await settle();
   assert.deepEqual(await renderer('layoutErrors'), []);
+  await verifySheets();
+  console.log('PASS fixed sheet heights, balanced reader gaps, external-only numbering and no page scrolling');
   console.log('PASS font-ready invalidation and rapid resize settle without observer errors');
+  // Short content cannot collapse the physical sheet; oversized content cannot grow it.
+  await writeFile(file, '# Short\n\nOne short paragraph.');
+  await renderer(`document.querySelector('[aria-label="Open Markdown file"]').click()`);
+  await until(() => renderer(`document.body.innerText.includes('One short paragraph.')`));
+  await mode('Page');
+  const shortHeight = await verifySheets();
+  assert.equal(await count(), 1);
   // A late media geometry change must update packing through ResizeObserver.
   await writeFile(file, '# Image\n\n![Local test image](favicon.svg)\n\nTrailing paragraph.');
   await renderer(`document.querySelector('[aria-label="Open Markdown file"]').click()`);
@@ -175,7 +215,8 @@ try {
   await renderer(`(() => { const style = document.createElement('style'); style.textContent = '.page-content img { width: 120px; height: 1200px; }'; document.head.append(style); })()`);
   await settle();
   assert.ok(await count() > beforeMedia);
-  assert.equal(await renderer(`(() => { const p = document.querySelector('.book-pages .book-page'); p.scrollTop = p.scrollHeight; return p.scrollTop > 0 && p.querySelector('img').naturalWidth > 0; })()`), true);
+  assert.equal(await renderer(`(() => { const sheet = document.querySelector('.book-pages .book-page'); sheet.scrollTop = sheet.scrollHeight; const p = sheet.querySelector('.oversized-block'); if (!p) return false; p.scrollTop = p.scrollHeight; return sheet.scrollTop === 0 && getComputedStyle(sheet).overflowY === 'clip' && p.scrollTop > 0 && p.querySelector('img').naturalWidth > 0; })()`), true);
+  assert.equal(await verifySheets(), shortHeight);
   console.log('PASS late image geometry repaginates; whole image remains scrollable');
   for (const [kind, content] of [
     ['code', '```txt\n' + 'code line\n'.repeat(100) + 'FINAL-TAIL\n```'],
@@ -188,7 +229,8 @@ try {
     await until(() => renderer(`document.body.innerText.includes(${JSON.stringify('Oversized ')} + ${JSON.stringify(kind)})`));
     await mode('Page');
     assert.equal(await count(), 1);
-    assert.equal(await renderer(`(() => { const p = document.querySelector('.book-pages .book-page'); p.scrollTop = p.scrollHeight; return p.scrollTop > 0 && p.textContent.includes('FINAL-TAIL'); })()`), true);
+    assert.equal(await renderer(`(() => { const sheet = document.querySelector('.book-pages .book-page'); sheet.scrollTop = sheet.scrollHeight; const p = sheet.querySelector('.oversized-block'); if (!p) return false; p.scrollTop = p.scrollHeight; return sheet.scrollTop === 0 && getComputedStyle(sheet).overflowY === 'clip' && p.scrollTop > 0 && p.textContent.includes('FINAL-TAIL'); })()`), true);
+    assert.equal(await verifySheets(), shortHeight);
     console.log('PASS oversized atomic ' + kind + ' remains complete and reachable');
   }
   // An oversized atomic paragraph remains complete and vertically reachable.
@@ -197,8 +239,9 @@ try {
   await until(() => renderer(`document.body.innerText.includes('Oversized')`));
   await mode('Page');
   assert.equal(await count(), 1);
-  assert.equal(await renderer(`(() => { const p = document.querySelector('.book-pages .book-page'); p.scrollTop = p.scrollHeight; return p.scrollTop > 0 && p.textContent.includes('FINAL-TAIL') && p.getAttribute('tabindex') === '0' && getComputedStyle(p).overflowY === 'auto'; })()`), true);
+  assert.equal(await renderer(`(() => { const sheet = document.querySelector('.book-pages .book-page'); sheet.scrollTop = sheet.scrollHeight; const p = sheet.querySelector('.oversized-block'); if (!p) return false; p.scrollTop = p.scrollHeight; return sheet.scrollTop === 0 && getComputedStyle(sheet).overflowY === 'clip' && p.scrollTop > 0 && p.textContent.includes('FINAL-TAIL') && p.getAttribute('tabindex') === '0' && getComputedStyle(p).overflowY === 'auto'; })()`), true);
   assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  assert.equal(await verifySheets(), shortHeight);
   console.log('PASS oversized whole paragraph remains complete, focusable and scrollable; no dirty-state mutation');
 } finally {
   clearTimeout(deadline);

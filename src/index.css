@@ -226,14 +226,6 @@ button {
   max-width: 100%;
   height: auto;
 }
-.book-page footer {
-  margin-top: 40px;
-  border-top: 1px solid #d9e0d7;
-  padding-top: 12px;
-  text-align: center;
-  color: #7a8b80;
-  font: 11px var(--sans);
-}
 .page-controls {
   display: flex;
   align-items: center;
@@ -1213,8 +1205,6 @@ button {
 .book-page {
   box-sizing: border-box;
   min-width: 0;
-  /* Keep the text width stable when an oversized atomic group needs a scrollbar. */
-  scrollbar-gutter: stable;
 }
 .page-content {
   display: flex;
@@ -1239,8 +1229,7 @@ button {
   min-height: 0;
   visibility: hidden;
   pointer-events: none;
-  /* Reserve the same scrollbar gutter as the visible page. */
-  overflow: auto;
+  overflow: clip;
 }
 
 /* Responsive page geometry follows the reader, including sidebar/panel changes. */
@@ -1253,4 +1242,43 @@ button {
 }
 .book-reader .book-page {
   padding: clamp(24px, 4cqw, 48px) clamp(22px, 5cqw, 52px) 28px;
+}
+
+/* The central flex area owns sheet height, after the toolbar and navigation. */
+.app-shell:has(.book-reader) {
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
+}
+.main-area:has(.book-reader) > .reader-toolbar {
+  flex-shrink: 0;
+}
+.book-reader {
+  --sheet-gap: 24px;
+  height: auto;
+  flex: 1 1 0;
+  padding-block: var(--sheet-gap) 0;
+  row-gap: var(--sheet-gap);
+}
+.book-reader .book-pages {
+  flex: 1 1 0;
+}
+.book-reader .page-controls {
+  flex: 0 0 44px;
+  padding: 0;
+}
+.book-page {
+  overflow: clip;
+}
+.book-pages .page-content {
+  height: 100%;
+  min-height: 0;
+}
+.page-content {
+  /* Identical text width in measurement and the oversized scrolling region. */
+  scrollbar-gutter: stable;
+  overflow: hidden;
+}
+.book-pages .page-content.oversized-block {
+  overflow: auto;
 }

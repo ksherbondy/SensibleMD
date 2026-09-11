@@ -29,7 +29,7 @@ it('resize notifications are coalesced, preserve the anchor, and settle with sta
     await s.setReadingLayout('Page'); await s.clickOutlineHeading('Section 8');
     const resize = ControlledResizeObserver.instances.find(o => [...o.targets].some(t => t.matches('.book-pages')))!;
     const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect');
-    testPageGeometry.height = 270; // 250px usable, two heading/paragraph groups per page.
+    testPageGeometry.height = 250; // 250px usable, two heading/paragraph groups per page.
     await act(async () => { for (let i = 0; i < 30; i++) { resize.emit(); window.dispatchEvent(new Event('resize')); } });
     await frame();
     expect(s.visiblePageNumbers()).toEqual([4]);
@@ -89,16 +89,16 @@ it('source replacement and stale layout callbacks cannot restore old pages', asy
     expect(screen.queryByRole('heading', { name: 'Section 8' })).not.toBeInTheDocument();
   } finally { s.unmount(); }
 });
-it('usable height subtracts computed page padding, borders, and the footer margin box', async () => {
+it('usable height subtracts only computed page padding and borders, without a footer', async () => {
   const { measurePageGeometry } = await import('../core/use-measured-pagination');
   const { parseSemanticDocument } = await import('../core/semantic-document');
   const model = parseSemanticDocument('Text.', 0);
   const host = document.createElement('div');
-  host.innerHTML = `<div class="book-pages"></div><article class="pagination-measurement" style="padding:10px 20px;border:3px solid"><div class="page-content"><p id="measure-reader-node-${model.nodes[0].id}" style="margin:3px 0 5px">Text.</p></div><footer style="margin:7px 0 9px">Page</footer></article>`;
+  host.innerHTML = `<div class="book-pages"></div><article class="pagination-measurement" style="padding:10px 20px;border:3px solid"><div class="page-content"><p id="measure-reader-node-${model.nodes[0].id}" style="margin:3px 0 5px">Text.</p></div></article>`;
   document.body.append(host);
   try {
     const geometry = measurePageGeometry(host.firstElementChild as HTMLElement, host.lastElementChild as HTMLElement, model)!;
-    expect(geometry.availableHeight).toBe(150 - 20 - 6 - 20 - 7 - 9);
+    expect(geometry.availableHeight).toBe(130 - 20 - 6);
     expect(geometry.blocks[model.nodes[0].id]).toEqual({ height: 100, marginTop: 3, marginBottom: 5 });
     expect((host.lastElementChild as HTMLElement).style.width).toBe('760px');
   } finally { host.remove(); }
@@ -135,5 +135,29 @@ it('container-only width changes repaginate Page without a window resize event',
     expect(s.visiblePageNumbers()).toEqual([3]);
     expect(screen.getByRole('article', { name: 'Page 3' })).toHaveTextContent('Section 6');
     expect(s.isDirty()).toBe(false);
+  } finally { s.unmount(); }
+});
+
+it('physical sheets omit internal numbering while application navigation remains', async () => {
+  const s = await start();
+  try {
+    await s.setReadingLayout('Page');
+    expect(document.querySelector('.book-page footer')).toBeNull();
+    expect(document.querySelector('.book-pages')?.textContent).not.toMatch(/Page \d/);
+    expect(s.visiblePageLabel()).toBe('Page 1 of 8');
+  } finally { s.unmount(); }
+});
+
+it('only oversized atomic content receives a focusable scrolling region', async () => {
+  testPageGeometry.blockScale = 5;
+  const s = await start();
+  try {
+    await s.setReadingLayout('Page');
+    const region = screen.getByRole('region', { name: 'Scrollable oversized content' });
+    expect(region).toHaveClass('oversized-block');
+    expect(region).toHaveAttribute('tabindex', '0');
+    expect(region).toHaveTextContent('Section 1');
+    expect(region).toHaveTextContent('Paragraph 1.');
+    expect(region.parentElement).not.toHaveAttribute('tabindex');
   } finally { s.unmount(); }
 });
