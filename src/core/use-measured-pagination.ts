@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { consumedHeight, paginateDocument, paginationBlocks, type PageGeometry } from './pagination';
 import type { SemanticDocument } from './semantic-document';
 
@@ -38,8 +38,7 @@ export function measurePageGeometry(viewport: HTMLElement, surface: HTMLElement,
   return { availableHeight, blocks, trailingHeight };
 }
 
-export function useMeasuredPagination(document: SemanticDocument, layoutKey: string, enabled: boolean) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+export function useMeasuredPagination(document: SemanticDocument, layoutKey: string, enabled: boolean, viewportRef: RefObject<HTMLDivElement | null>) {
   const measurementRef = useRef<HTMLElement>(null);
   // Source and version validate deferred work; geometry is derived, never navigation state.
   const [result, setResult] = useState<{ document: SemanticDocument; layoutKey: string; geometry: PageGeometry; signature: string } | null>(null);
@@ -63,6 +62,8 @@ export function useMeasuredPagination(document: SemanticDocument, layoutKey: str
     };
     const observer = new ResizeObserver(schedule);
     observer.observe(viewport);
+    const reader = viewport.closest(".book-reader");
+    if (reader) observer.observe(reader);
     // Observe content, not visible page fragments: packing cannot resize its own input.
     const body = surface.querySelector('.page-content');
     if (body) {
@@ -85,7 +86,7 @@ export function useMeasuredPagination(document: SemanticDocument, layoutKey: str
       surface.removeEventListener('error', schedule, true);
       fonts?.removeEventListener('loadingdone', schedule);
     };
-  }, [document, layoutKey, enabled]);
+  }, [document, layoutKey, enabled, viewportRef]);
   const geometry = result?.document === document && result.layoutKey === layoutKey ? result.geometry : null;
   const pages = useMemo(() => geometry ? paginateDocument(document, geometry) : [], [document, geometry]);
   return { viewportRef, measurementRef, pages, ready: geometry !== null };

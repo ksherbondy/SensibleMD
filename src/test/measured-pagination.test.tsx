@@ -100,6 +100,40 @@ it('usable height subtracts computed page padding, borders, and the footer margi
     const geometry = measurePageGeometry(host.firstElementChild as HTMLElement, host.lastElementChild as HTMLElement, model)!;
     expect(geometry.availableHeight).toBe(150 - 20 - 6 - 20 - 7 - 9);
     expect(geometry.blocks[model.nodes[0].id]).toEqual({ height: 100, marginTop: 3, marginBottom: 5 });
-    expect((host.lastElementChild as HTMLElement).style.width).toBe('600px');
+    expect((host.lastElementChild as HTMLElement).style.width).toBe('760px');
   } finally { host.remove(); }
+});
+it('container-only sidebar changes recompute spread columns and preserve the semantic anchor', async () => {
+  testPageGeometry.width = 500;
+  const s = await start();
+  const windowWidth = window.innerWidth;
+  try {
+    await s.setReadingLayout('Spread'); await s.clickOutlineHeading('Section 6');
+    expect(document.querySelector('.book-reader')).toHaveAttribute('data-columns', '1');
+    await s.user.click(screen.getByRole('button', { name: 'Close outline' }));
+    testPageGeometry.width = 760;
+    ControlledResizeObserver.instances.forEach(observer => observer.emit()); await frame(); await frame();
+    expect(window.innerWidth).toBe(windowWidth);
+    expect(document.querySelector('.book-reader')).toHaveAttribute('data-columns', '2');
+    expect(s.visiblePageNumbers()).toContain(6);
+    // A future panel can consume space without a React sidebar toggle or OS resize.
+    testPageGeometry.width = 500;
+    ControlledResizeObserver.instances.forEach(observer => observer.emit()); await frame(); await frame();
+    expect(document.querySelector('.book-reader')).toHaveAttribute('data-columns', '1');
+    expect(s.visiblePageNumbers()).toEqual([6]);
+    expect(s.isDirty()).toBe(false);
+  } finally { s.unmount(); }
+});
+it('container-only width changes repaginate Page without a window resize event', async () => {
+  const s = await start();
+  try {
+    await s.setReadingLayout('Page'); await s.clickOutlineHeading('Section 6');
+    await s.user.click(screen.getByRole('button', { name: 'Close outline' }));
+    testPageGeometry.width = 900;
+    testPageGeometry.blockScale = 0.4;
+    ControlledResizeObserver.instances.forEach(observer => observer.emit()); await frame();
+    expect(s.visiblePageNumbers()).toEqual([3]);
+    expect(screen.getByRole('article', { name: 'Page 3' })).toHaveTextContent('Section 6');
+    expect(s.isDirty()).toBe(false);
+  } finally { s.unmount(); }
 });

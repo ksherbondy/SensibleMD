@@ -8,8 +8,8 @@ export function paginateTestDocument(document: SemanticDocument, availableHeight
     height: node.type === 'heading' ? 20 : 100, marginTop: 0, marginBottom: 0,
   }])) });
 }
-export const testPageGeometry = { width: 600, height: 150, blockScale: 1, unavailable: false };
-export function resetPageGeometry() { Object.assign(testPageGeometry, { width: 600, height: 150, blockScale: 1, unavailable: false }); }
+export const testPageGeometry = { width: 760, height: 150, blockScale: 1, unavailable: false };
+export function resetPageGeometry() { Object.assign(testPageGeometry, { width: 760, height: 150, blockScale: 1, unavailable: false }); }
 export class ControlledResizeObserver {
   static instances: ControlledResizeObserver[] = [];
   targets = new Set<Element>();
@@ -34,6 +34,8 @@ export function installPaginationGeometry() {
     if (!element.matches('.book-pages')) return actual;
     return new Proxy(actual, { get(target, key) {
       if (key === 'gridTemplateColumns') return `${testPageGeometry.width}px`;
+      if (key === 'columnGap') return '18px';
+      if (key === 'getPropertyValue') return (name: string) => name === '--spread-min-page-width' ? '320px' : target.getPropertyValue(name);
       const value = Reflect.get(target, key, target);
       return typeof value === 'function' ? value.bind(target) : value;
     } });

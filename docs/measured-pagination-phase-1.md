@@ -32,7 +32,7 @@ Production files changed:
 - `src/App.tsx`: shared measurement render, derived page wiring, model memoization,
   pending-layout UI, and semantic DOM mapping for thematic breaks.
 - `src/core/page-render.ts`: measurement-only ID namespace for generated content.
-- `src/core/use-page-step.ts`: comment updated; column-selection behavior unchanged.
+- `src/core/use-page-step.ts`: container-observed effective spread column selection.
 - `src/index.css`: shared block flow, page-width preference, hidden measurement
   surface, stable scrollbar gutter and table overflow.
 
@@ -78,8 +78,8 @@ page, preserving the earlier footnote placement contract.
 
 Document/source version, font scale, line height, content width, requested Page /
 Spread mode and effective column count invalidate the derived result.
-ResizeObserver watches the stable visible grid and the full offscreen content /
-blocks. Window resize, fonts.ready, font loadingdone, and captured media load/error
+ResizeObserver watches the stable visible grid, its reader container, and the full
+offscreen content / blocks. Window resize, fonts.ready, font loadingdone, and captured media load/error
 also schedule measurement. This covers both layout changes and late content sizes.
 
 Notifications coalesce into one animation frame. An unchanged geometry signature
@@ -94,6 +94,27 @@ uses the existing one/two-column step and preserves right-page targets. No raw p
 number is persisted or used to restore position. While geometry is unavailable,
 `Preparing pages…` is shown with disabled page traversal; there is no production
 word-count fallback.
+
+## Responsive reader-container correction
+
+Spread previously selected columns from a window media query, while page padding
+used viewport units. A narrow reader could therefore receive two columns merely
+because the application window was wide. The new regression reproduced this on
+the previous implementation: a narrow grid expected one column but received two.
+
+Column selection and measured pagination now share the actual page-grid ref.
+ResizeObserver watches both that grid and its reader container, covering outline
+open/close and future panel resizing without requiring a window resize event.
+Spread uses two columns only when the available grid width fits two CSS-defined
+320px minimum page widths plus the computed gutter. Page always uses one column.
+The reader establishes an inline-size query container; page padding and the
+12–24px center gutter use reader-relative units. Visible and measurement pages
+therefore receive the same geometry. The content-width preference still caps the
+total grid width, so expansion stops at the user's chosen cap.
+
+Page/Spread and content-width changes also invalidate measurement. Geometry
+changes repack the derived page map without writing the semantic reading anchor,
+dirty state, or source.
 
 ## Oversized blocks and Phase 2 limits
 
@@ -140,8 +161,9 @@ Test files added/updated:
 
 Results:
 
-- Focused pagination/navigation suites: **41 passed**.
-- Full suite: **210 passed, 70 existing TODO**, all 30 test files passed.
+- Latest focused measured-pagination, pagination-reader and position-continuity suites:
+  **23 passed** across three files.
+- Full suite: **212 passed, 70 existing TODO**, all 30 test files passed.
 - TypeScript/Vite build: **PASS**.
 - Lint: **PASS with existing warnings**; no new warnings in pagination code.
 - Diff whitespace and packaged-script syntax checks: **PASS**.
@@ -150,6 +172,11 @@ Results:
   Font scale changed page count **9 → 25**, line spacing **9 → 13**, content width
   **17 → 9**, and window geometry **13 → 9** for the same Markdown. The selected
   section remained visible through reflow and Page/Spread changes.
+- Packaged container-only changes: **PASS**. In both Page and Spread, closing the
+  outline expanded page tracks and recomputed the gutter with unchanged window
+  bounds; reopening retained the semantic target. Narrow-reader Spread collapsed
+  to one column and expanded to two after closing the outline. Simulated panel
+  resizing also recomputed geometry and retained the target.
 - Packaged exact coverage: **37/37 source blocks once each**; ordinary page content
   plus margins/footer fit the measured page height.
 - Packaged font-completion/rapid-resize checks: **PASS**, no observer errors.

@@ -109,6 +109,39 @@ try {
   await mode('Spread'); assert.equal(await anchorVisible(), true);
   await mode('Page'); assert.equal(await anchorVisible(), true);
   console.log('PASS Page/Spread preserves semantic target');
+  // Sidebar and future panel resizing must work without BrowserWindow resizing.
+  const geometry = () => renderer(`({ width: document.querySelector('.book-pages').getBoundingClientRect().width, tracks: getComputedStyle(document.querySelector('.book-pages')).gridTemplateColumns.split(' ').map(parseFloat), gap: parseFloat(getComputedStyle(document.querySelector('.book-pages')).columnGap), columns: document.querySelector('.book-reader').dataset.columns })`);
+  await evaluate('smokeWindow.setSize(1100, 900)'); await settle();
+  for (const layout of ['Page', 'Spread']) {
+    await mode(layout); await anchor();
+    const before = await geometry();
+    const bounds = await evaluate('smokeWindow.getBounds()');
+    await renderer(`document.querySelector('[aria-label="Close outline"]').click()`); await settle();
+    const after = await geometry();
+    assert.ok(after.width > before.width, 'closing outline must expand available page grid');
+    assert.ok(after.tracks[0] > before.tracks[0], 'page tracks must expand');
+    assert.ok(after.gap > before.gap, 'gutter must follow reader container');
+    if (layout === 'Spread') assert.equal(after.tracks.length, 2);
+    assert.deepEqual(await evaluate('smokeWindow.getBounds()'), bounds);
+    assert.equal(await renderer(`Array.from(document.querySelectorAll('.book-pages h1')).some(h => h.textContent === 'Section 6')`), true);
+    await renderer(`document.querySelector('[aria-label="Open outline"]').click()`); await settle();
+    assert.equal(await anchorVisible(), true);
+    console.log('PASS ' + layout + ' outline toggle recomputes page tracks/gutter and retains semantic target with fixed window bounds');
+  }
+  await evaluate('smokeWindow.setSize(900, 900)'); await mode('Spread'); await anchor();
+  assert.equal((await geometry()).columns, '1');
+  await renderer(`document.querySelector('[aria-label="Close outline"]').click()`); await settle();
+  assert.equal((await geometry()).columns, '2');
+  await renderer(`document.querySelector('[aria-label="Open outline"]').click()`); await settle();
+  assert.equal(await anchorVisible(), true);
+  await mode('Page');
+  const panelBefore = await geometry();
+  await renderer(`document.querySelector('.workspace').style.gridTemplateColumns = '400px minmax(0, 1fr)'`); await settle();
+  assert.ok((await geometry()).width < panelBefore.width);
+  assert.equal(await anchorVisible(), true);
+  await renderer(`document.querySelector('.workspace').style.gridTemplateColumns = ''`); await settle();
+  console.log('PASS container-only spread collapse/expansion and panel resizing');
+
   await evaluate('smokeWindow.setSize(1000, 760)'); await settle(); const narrowWindow = await count();
   await evaluate('smokeWindow.setSize(1600, 1050)'); await settle(); const wideWindow = await count();
   assert.notEqual(narrowWindow, wideWindow); assert.equal(await anchorVisible(), true);

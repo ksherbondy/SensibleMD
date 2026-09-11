@@ -1242,3 +1242,15 @@ button {
   /* Reserve the same scrollbar gutter as the visible page. */
   overflow: auto;
 }
+
+/* Responsive page geometry follows the reader, including sidebar/panel changes. */
+.book-reader {
+  container-type: inline-size;
+}
+.book-reader .book-pages {
+  --spread-min-page-width: 320px;
+  column-gap: clamp(12px, 2cqw, 24px);
+}
+.book-reader .book-page {
+  padding: clamp(24px, 4cqw, 48px) clamp(22px, 5cqw, 52px) 28px;
+}

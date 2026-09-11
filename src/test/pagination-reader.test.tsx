@@ -1,5 +1,6 @@
+import { testPageGeometry, ControlledResizeObserver } from "./pagination-geometry";
 import { act, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { startScenario } from "./scenario";
 
 const section = (n: number) =>
@@ -7,30 +8,16 @@ const section = (n: number) =>
 const source = Array.from({ length: 5 }, (_, i) => section(i + 1)).join("\n\n");
 
 function mediaWidth(initial: boolean) {
-  let narrow = initial;
-  const listeners = new Set<() => void>();
-  const mock = vi.spyOn(window, "matchMedia").mockImplementation((media) => ({
-    media,
-    get matches() {
-      return narrow;
-    },
-    onchange: null,
-    addEventListener: (_type: string, listener: unknown) =>
-      listeners.add(listener as () => void),
-    removeEventListener: (_type: string, listener: unknown) =>
-      listeners.delete(listener as () => void),
-    addListener() {},
-    removeListener() {},
-    dispatchEvent: () => true,
-  }));
+  testPageGeometry.width = initial ? 500 : 760;
   return {
-    resize: async (next: boolean) => {
+    resize: async (narrow: boolean) => {
       await act(async () => {
-        narrow = next;
-        listeners.forEach((listener) => listener());
+        testPageGeometry.width = narrow ? 500 : 760;
+        ControlledResizeObserver.instances.forEach(observer => observer.emit());
+        await new Promise(resolve => requestAnimationFrame(resolve));
       });
     },
-    restore: () => mock.mockRestore(),
+    restore: () => { testPageGeometry.width = 760; },
   };
 }
 

@@ -636,11 +636,13 @@ function DocumentWorkspace({
     (total, result) => total + result.occurrences,
     0,
   );
-  const pageStep = usePageStep(readingMode === "spread");
-  const { pages, ready: pagesReady, viewportRef, measurementRef } = useMeasuredPagination(
+  const paginationEnabled = view === "read" && readingMode !== "continuous";
+  const { pageStep, viewportRef } = usePageStep(readingMode === "spread", paginationEnabled);
+  const { pages, ready: pagesReady, measurementRef } = useMeasuredPagination(
     semanticDocument,
     `${activeDocumentId}:${fontScale}:${lineHeight}:${contentWidth}:${readingMode}:${pageStep}`,
-    view === "read" && readingMode !== "continuous",
+    paginationEnabled,
+    viewportRef,
   );
   const pageIndex =
     Math.floor(pageForLocation(pages, navigationAnchor) / pageStep) * pageStep;
