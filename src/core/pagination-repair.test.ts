@@ -1,5 +1,6 @@
+import { paginateTestDocument as paginateDocument } from "../test/pagination-geometry";
 import { describe, expect, it } from "vitest";
-import { paginateDocument, pageIndexAfter } from "./pagination";
+import { pageIndexAfter } from "./pagination";
 import { parseSemanticDocument } from "./semantic-document";
 import { locationForPage, pageForLocation } from "./navigation-location";
 
@@ -14,7 +15,7 @@ describe("DOG-008 whole-block pagination", () => {
       "code\n".repeat(40) +
       "```\n\n- one\n- two\n\n> Quote\n\n---";
     const model = parseSemanticDocument(source, 0);
-    const pages = paginateDocument(model, 10);
+    const pages = paginateDocument(model);
     const blocks = pages.flatMap((page) => page.fragments);
     expect(blocks.map((block) => block.nodeId)).toEqual(
       model.nodes.map((node) => node.id),
@@ -37,13 +38,12 @@ describe("DOG-008 whole-block pagination", () => {
       "[link]: https://example.com",
       "<!-- comment -->",
     ]) {
-      expect(paginateDocument(parseSemanticDocument(source, 0), 1)).toEqual([]);
+      expect(paginateDocument(parseSemanticDocument(source, 0))).toEqual([]);
     }
   });
   it("keeps oversized content with its heading and produces no empty pages", () => {
     const pages = paginateDocument(
       parseSemanticDocument("# Big\n\n" + "word ".repeat(300), 0),
-      10,
     );
     expect(pages).toHaveLength(1);
     expect(pages[0].fragments).toHaveLength(2);
@@ -55,7 +55,7 @@ describe("DOG-008 whole-block pagination", () => {
       "word ".repeat(20) +
       "\n\n# Trailing\n\n## Last";
     const model = parseSemanticDocument(source, 0);
-    const pages = paginateDocument(model, 10);
+    const pages = paginateDocument(model);
     expect(
       pages.map((page) => page.fragments.map((block) => block.nodeId)),
     ).toEqual([
@@ -79,7 +79,7 @@ describe("DOG-008 whole-block pagination", () => {
         ).join("\n\n"),
         0,
       );
-      const pages = paginateDocument(model, 10);
+      const pages = paginateDocument(model);
       expect(pages).toHaveLength(count);
       for (const step of [1, 2]) {
         const seen = new Set<number>();

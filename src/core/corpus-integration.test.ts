@@ -1,10 +1,10 @@
+import { paginateTestDocument as paginateDocument } from "../test/pagination-geometry";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { analyzeAccessibility } from "./accessibility-diagnostics";
 import { createCollection } from "./document-collection";
 import { resolveInternalMarkdownLink } from "./internal-links";
-import { paginateDocument } from "./pagination";
 import { searchDocument, parseSemanticDocument } from "./semantic-document";
 
 const corpus = (relativePath: string) =>
@@ -64,7 +64,7 @@ describe("Markdown regression corpus", () => {
       1,
     );
     expect(searchDocument(document, "searchable").length).toBeGreaterThan(4);
-    expect(paginateDocument(document, 25).length).toBeGreaterThan(1);
+    expect(paginateDocument(document).length).toBeGreaterThan(1);
   });
 
   it("parses hostile and malformed Markdown without resolving dangerous navigation", () => {

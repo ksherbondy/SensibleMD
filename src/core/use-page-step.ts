@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 // This matches the existing responsive spread breakpoint. It selects columns,
-// not page-break geometry; the requested spread capacity remains unchanged.
+// while measured geometry determines each page’s boundaries.
 export function usePageStep(spread: boolean) {
   const [narrow, setNarrow] = useState(
     () => window.matchMedia("(max-width: 900px)").matches,

@@ -1,10 +1,10 @@
+import { paginateTestDocument as paginateDocument } from "../test/pagination-geometry";
 import { describe, expect, it } from "vitest";
 import { DocumentBuffer } from "./document-buffer";
 import { parseSemanticDocument, searchDocument } from "./semantic-document";
 import {
   pageIndexAfter,
   pageIndexForNode,
-  paginateDocument,
 } from "./pagination";
 import { changeHeadingLevel } from "./structural-commands";
 import { analyzeAccessibility } from "./accessibility-diagnostics";
@@ -75,7 +75,7 @@ describe("pagination", () => {
   it("groups complete semantic blocks without changing their source", () => {
     const source = "# First\n\nOne two three.\n\n## Second\n\nFour five six.";
     const document = parseSemanticDocument(source, 1);
-    const pages = paginateDocument(document, 6);
+    const pages = paginateDocument(document);
     expect(pages).toHaveLength(2);
     expect(pages[0].fragments[0].source).toBe("# First");
     expect(
@@ -87,7 +87,7 @@ describe("pagination", () => {
     const source =
       "# First\n\nOne two three four five six seven eight.\n\n## Second\n\nNine ten.";
     const document = parseSemanticDocument(source, 1);
-    const pages = paginateDocument(document, 6);
+    const pages = paginateDocument(document);
     expect(
       pages[0].fragments.some((fragment) =>
         fragment.source.startsWith("# First"),
@@ -116,7 +116,7 @@ describe("pagination", () => {
       "# One\n\nFirst words.\n\n# Two\n\nSecond words.",
       1,
     );
-    const pages = paginateDocument(document, 4);
+    const pages = paginateDocument(document);
     const secondHeading = document.headings[1];
     expect(pageIndexForNode(pages, secondHeading.id)).toBe(1);
   });

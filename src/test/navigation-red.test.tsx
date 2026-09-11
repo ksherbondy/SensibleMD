@@ -2,11 +2,8 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { startScenario } from "./scenario";
 
-// At the existing 76-word capacity: heading+30 words, a 60-word code block,
-// heading+30 words, another code block, heading+30 words. Pages 2 and 4
-// have no heading. Code blocks stay intact even in the current paginator,
-// so the snap-back reproduction does not depend on paragraph fragmentation.
-// No production paginator is used to compute the expected navigation outcome.
+// Synthetic layout: 130px pages, 20px headings and 100px blocks.
+// Pages 2 and 4 have no heading; expectations do not call the production paginator.
 const paragraph = (count: number) =>
   Array.from({ length: count }, (_, index) => `word${index}`).join(" ");
 const codeBlock = `\`\`\`text\n${paragraph(60)}\n\`\`\``;

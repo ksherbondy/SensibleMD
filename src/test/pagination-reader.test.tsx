@@ -227,7 +227,7 @@ describe("DOG-008 paginated reader", () => {
         `#${referenceId}`,
       );
       await scenario.setReadingLayout("Spread");
-      expect(document.querySelectorAll("[data-footnotes]")).toHaveLength(1);
+      expect(document.querySelectorAll(".book-pages [data-footnotes]")).toHaveLength(1);
       expect(scenario.isDirty()).toBe(false);
       expect(localStorage.getItem("sensiblemd-document")).toBe(markdown);
     } finally {

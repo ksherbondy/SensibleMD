@@ -1,6 +1,7 @@
+import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
-import { rehypeBookPage } from "./core/page-render";
+import { rehypeBookPage, rehypeMeasurementIds } from "./core/page-render";
 import { usePageStep } from "./core/use-page-step";
 import { useNavigationWork } from "./core/use-navigation-work";
 import { useReadingObservation } from "./core/use-reading-observation";
@@ -15,6 +16,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -66,7 +68,6 @@ import {
 } from "./core/semantic-document";
 import {
   pageIndexAfter,
-  paginateDocument,
   type BookPage,
 } from "./core/pagination";
 
@@ -160,6 +161,7 @@ Good Markdown has a useful heading hierarchy, clear links, and meaningful image 
 This is an editable sample. Try changing a heading, adding a paragraph, or opening your own file.`;
 
 // Parser positions, rather than displayed text, distinguish duplicate/formatted headings.
+const ReaderIdPrefix = createContext("");
 const ReaderNodeContext = createContext<SemanticNode[]>([]);
 const readerBlockComponents: Components = Object.fromEntries(
   (
@@ -170,6 +172,7 @@ const readerBlockComponents: Components = Object.fromEntries(
       ["table", "table"],
       ["ul", "list"],
       ["ol", "list"],
+      ["hr", "thematicBreak"],
     ] as const
   ).map(([tag, type]) => [
     tag,
@@ -178,6 +181,7 @@ const readerBlockComponents: Components = Object.fromEntries(
       children,
     }: ExtraProps & { children?: ReactNode }) {
       const nodes = useContext(ReaderNodeContext);
+      const prefix = useContext(ReaderIdPrefix);
       const target = nodes.find(
         (item) =>
           item.type === type &&
@@ -185,7 +189,7 @@ const readerBlockComponents: Components = Object.fromEntries(
       );
       return createElement(
         tag,
-        { id: target ? readerNodeId(target.id) : undefined },
+        { id: target ? prefix + readerNodeId(target.id) : undefined },
         children,
       );
     },
@@ -197,14 +201,13 @@ const semanticHeadingComponents: Components = (() => {
   for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6"] as const) {
     components[tag] = function SemanticHeading({ node, children, ...props }) {
       const headings = useContext(HeadingContext);
+      const prefix = useContext(ReaderIdPrefix);
+      const id = headings.find(heading => heading.line === node?.position?.start.line)?.id;
       return createElement(
         tag,
         {
           ...props,
-          id:
-            headings.find(
-              (heading) => heading.line === node?.position?.start.line,
-            )?.id ?? props.id,
+          id: id ? prefix + id : props.id,
         },
         children,
       );
@@ -240,11 +243,17 @@ function ReaderSurface({
   pageStep,
   onPageIndex,
   onInternalLink,
+  viewportRef,
+  measurementRef,
+  pagesReady,
 }: {
   source: string;
   headings: Heading[];
   navigableNodes: SemanticNode[];
   blocks: SemanticNode[];
+  viewportRef: React.RefObject<HTMLDivElement | null>;
+  measurementRef: React.RefObject<HTMLElement | null>;
+  pagesReady: boolean;
   pageStep: number;
   mode: ReadingMode;
   pages: BookPage[];
@@ -252,14 +261,15 @@ function ReaderSurface({
   onPageIndex: (index: number) => void;
   onInternalLink: (href: string) => boolean;
 }) {
-  const navigationId = (type: string, offset: number | undefined) => {
+  const navigationId = (type: string, offset: number | undefined, prefix = "") => {
     const node = navigableNodes.find(
       (item) => item.type === type && item.range.start === offset,
     );
-    return node ? readerNodeId(node.id) : undefined;
+    return node ? prefix + readerNodeId(node.id) : undefined;
   };
-  const renderMarkdown = (page?: BookPage) => (
-    <ReaderNodeContext.Provider value={navigableNodes}>
+  const renderMarkdown = (page?: BookPage, measuring = false) => (
+    <ReaderIdPrefix.Provider value={measuring ? "measure-" : ""}>
+    <ReaderNodeContext.Provider value={blocks}>
       <HeadingContext.Provider value={headings}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -281,7 +291,7 @@ function ReaderSurface({
                     },
                   ],
                 ]
-              : [rehypeSanitize]
+              : measuring ? [rehypeSanitize, rehypeMeasurementIds] : [rehypeSanitize]
           }
           components={{
             a: ({ href, children, node, ...props }) => {
@@ -291,7 +301,7 @@ function ReaderSurface({
                 <a
                   {...props}
                   id={
-                    navigationId("link", node?.position?.start.offset) ??
+                    navigationId("link", node?.position?.start.offset, measuring ? "measure-" : "") ??
                     props.id
                   }
                   href={href}
@@ -319,7 +329,7 @@ function ReaderSurface({
             },
             img: ({ node, ...props }) => (
               <img
-                id={navigationId("image", node?.position?.start.offset)}
+                id={navigationId("image", node?.position?.start.offset, measuring ? "measure-" : "")}
                 {...props}
               />
             ),
@@ -331,6 +341,7 @@ function ReaderSurface({
         </ReactMarkdown>
       </HeadingContext.Provider>
     </ReaderNodeContext.Provider>
+    </ReaderIdPrefix.Provider>
   );
   if (mode === "continuous")
     return <article className="document-reader">{renderMarkdown()}</article>;
@@ -341,8 +352,8 @@ function ReaderSurface({
       data-columns={pageStep}
       aria-label={`${mode === "spread" ? "Two-page" : "Single-page"} reading mode`}
     >
-      <div className="book-pages">
-        {!pages.length && <p>No readable content.</p>}
+      <div className="book-pages" ref={viewportRef} aria-busy={!pagesReady}>
+        {!pagesReady ? <p role="status">Preparing pages…</p> : !pages.length && <p>No readable content.</p>}
         {visiblePages.map((page) => (
           <article
             className="book-page"
@@ -350,11 +361,15 @@ function ReaderSurface({
             key={page.pageNumber}
             aria-label={`Page ${page.pageNumber}`}
           >
-            {renderMarkdown(page)}
+            <div className="page-content">{renderMarkdown(page)}</div>
             <footer>Page {page.pageNumber}</footer>
           </article>
         ))}
       </div>
+      <article className="book-page pagination-measurement" ref={measurementRef} aria-hidden="true" inert>
+        <div className="page-content">{renderMarkdown(undefined, true)}</div>
+        <footer>Page 0000</footer>
+      </article>
       <div className="page-controls">
         <button
           type="button"
@@ -567,10 +582,8 @@ function DocumentWorkspace({
   if (bufferRef.current === null)
     bufferRef.current = new DocumentBuffer("active-document", source);
   const buffer = bufferRef.current;
-  const semanticDocument = parseSemanticDocument(
-    source,
-    buffer.snapshot().version,
-  );
+  const sourceVersion = buffer.snapshot().version;
+  const semanticDocument = useMemo(() => parseSemanticDocument(source, sourceVersion), [source, sourceVersion]);
   const activeNode = semanticDocument.navigableNodes.find(
     (node) => node.id === activeNodeId,
   );
@@ -623,11 +636,12 @@ function DocumentWorkspace({
     (total, result) => total + result.occurrences,
     0,
   );
-  const pages = paginateDocument(
-    semanticDocument,
-    readingMode === "spread" ? 52 : 76,
-  );
   const pageStep = usePageStep(readingMode === "spread");
+  const { pages, ready: pagesReady, viewportRef, measurementRef } = useMeasuredPagination(
+    semanticDocument,
+    `${activeDocumentId}:${fontScale}:${lineHeight}:${contentWidth}:${readingMode}:${pageStep}`,
+    view === "read" && readingMode !== "continuous",
+  );
   const pageIndex =
     Math.floor(pageForLocation(pages, navigationAnchor) / pageStep) * pageStep;
   const presentation = useRef({ view, readingMode });
@@ -2814,6 +2828,9 @@ function DocumentWorkspace({
               pageStep={pageStep}
               mode={readingMode}
               pages={pages}
+              pagesReady={pagesReady}
+              viewportRef={viewportRef}
+              measurementRef={measurementRef}
               pageIndex={pageIndex}
               onPageIndex={setPageAndContext}
               onInternalLink={followInternalLink}

@@ -13,13 +13,32 @@ export interface BookPage {
   estimatedWords: number;
 }
 
-export function paginateDocument(
-  document: SemanticDocument,
-  wordsPerPage = 220,
-): BookPage[] {
+export interface BlockGeometry {
+  height: number;
+  marginTop: number;
+  marginBottom: number;
+}
+export interface PageGeometry {
+  availableHeight: number;
+  blocks: Record<string, BlockGeometry>;
+  /** Generated endnotes stay with the last source block, measured in the same flow. */
+  trailingHeight?: number;
+}
+export const paginationBlocks = (document: SemanticDocument) => document.nodes.filter(node =>
+  ["heading", "paragraph", "code", "blockquote", "list", "table", "thematicBreak"].includes(node.type),
+);
+export const consumedHeight = (block: BlockGeometry) => block.height + block.marginTop + block.marginBottom;
+
+export function paginateDocument(document: SemanticDocument, geometry: PageGeometry): BookPage[] {
+  const blocks = paginationBlocks(document);
+  if (!(geometry.availableHeight > 0) || !Number.isFinite(geometry.availableHeight) || blocks.some(node => {
+    const block = geometry.blocks[node.id];
+    return !block || ![block.height, block.marginTop, block.marginBottom].every(Number.isFinite) || block.height < 0;
+  })) return [];
   const pages: BookPage[] = [];
   let fragments: PageFragment[] = [];
   let wordCount = 0;
+  let usedHeight = 0;
   const pushPage = () => {
     if (fragments.length)
       pages.push({
@@ -29,24 +48,12 @@ export function paginateDocument(
       });
     fragments = [];
     wordCount = 0;
+    usedHeight = 0;
   };
-  // Only blocks represented by the sanitized Markdown renderer own pages.
-  // Definitions remain in the full render source; raw HTML is not rendered.
-  const blocks = document.nodes.filter((node) =>
-    [
-      "heading",
-      "paragraph",
-      "code",
-      "blockquote",
-      "list",
-      "table",
-      "thematicBreak",
-    ].includes(node.type),
-  );
   for (let index = 0; index < blocks.length; ) {
     const group = [blocks[index++]];
     // Keep heading runs with their next block, even when that block overflows
-    // capacity. Capacity is a grouping estimate, never a clipping boundary.
+    // the page. The entire atomic group remains reachable by scrolling.
     while (group.at(-1)?.type === "heading" && index < blocks.length)
       group.push(blocks[index++]);
     const complete = group.map((node) => ({
@@ -61,7 +68,10 @@ export function paginateDocument(
         total + block.source.trim().split(/\s+/).filter(Boolean).length,
       0,
     );
-    if (fragments.length && wordCount + groupWords > wordsPerPage) pushPage();
+    const groupHeight = group.reduce((total, node) => total + consumedHeight(geometry.blocks[node.id]), 0)
+      + (index === blocks.length ? geometry.trailingHeight ?? 0 : 0);
+    if (fragments.length && usedHeight + groupHeight > geometry.availableHeight) pushPage();
+    usedHeight += groupHeight;
     fragments.push(...complete);
     wordCount += groupWords;
   }

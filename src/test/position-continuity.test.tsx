@@ -1,3 +1,4 @@
+import { paginateTestDocument as paginateDocument } from "./pagination-geometry";
 import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { startScenario } from "./scenario";
@@ -6,7 +7,6 @@ import {
   scrollRequests,
 } from "./dom-polyfills";
 import { parseSemanticDocument } from "../core/semantic-document";
-import { paginateDocument } from "../core/pagination";
 
 const source =
   "# One section\n\n" +
@@ -31,7 +31,7 @@ describe("DOG2-001 semantic passage continuity", () => {
         await s.setReadingLayout(layout);
         await s.clickNextPage();
         const node = nodeForPage(
-          layout === "Spread" ? 52 : 76,
+          130,
           s.visiblePageNumbers()[0] - 1,
         );
         scrollRequests.length = 0;
@@ -41,7 +41,7 @@ describe("DOG2-001 semantic passage continuity", () => {
         expect(s.currentMode()).toBe("Read");
         await s.setReadingLayout(layout);
         expect(s.visiblePageNumbers()).toContain(
-          paginateDocument(model, layout === "Spread" ? 52 : 76).findIndex(
+          paginateDocument(model, 130).findIndex(
             (p) => p.fragments.some((f) => f.nodeId === node.id),
           ) + 1,
         );
@@ -57,7 +57,7 @@ describe("DOG2-001 semantic passage continuity", () => {
       try {
         await s.setReadingLayout("Page");
         await s.clickNextPage();
-        const node = nodeForPage(76, s.visiblePageNumbers()[0] - 1);
+        const node = nodeForPage(130, s.visiblePageNumbers()[0] - 1);
         scrollRequests.length = 0;
         await s.enterMode(mode);
         await s.settleNavigation();
@@ -103,7 +103,7 @@ describe("DOG2-001 semantic passage continuity", () => {
       );
       await s.setReadingLayout("Page");
       expect(s.visiblePageNumbers()).toContain(
-        paginateDocument(model, 76).findIndex((p) =>
+        paginateDocument(model).findIndex((p) =>
           p.fragments.some((f) => f.nodeId === node.id),
         ) + 1,
       );

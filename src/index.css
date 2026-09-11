@@ -1194,3 +1194,51 @@ button {
     grid-template-areas: "editor" "preview" "findings";
   }
 }
+
+/* Measured whole-block pages. This is the single final page geometry contract. */
+.book-reader {
+  position: relative;
+}
+.book-reader .book-pages {
+  width: min(100%, var(--reader-width));
+  align-self: center;
+  padding: 0;
+}
+.book-reader[data-columns="1"] .book-pages {
+  grid-template-columns: minmax(0, 1fr);
+}
+.book-reader[data-columns="2"] .book-pages {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.book-page {
+  box-sizing: border-box;
+  min-width: 0;
+  /* Keep the text width stable when an oversized atomic group needs a scrollbar. */
+  scrollbar-gutter: stable;
+}
+.page-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.page-content > * {
+  flex: none;
+  /* Flex items do not collapse margins: measured sums equal visible consumed space. */
+  min-width: 0;
+}
+.book-page table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.book-page.pagination-measurement {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  height: auto;
+  min-height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  /* Reserve the same scrollbar gutter as the visible page. */
+  overflow: auto;
+}

@@ -64,3 +64,19 @@ export function rehypeBookPage({
     });
   };
 }
+
+// A measurement render must not collide with visible headings or generated note IDs.
+export function rehypeMeasurementIds() {
+  return (tree: Root) => {
+    const visit = (parent: Root | Element) => {
+      for (const child of parent.children) {
+        if (child.type !== 'element') continue;
+        if (typeof child.properties.id === 'string') child.properties.id = `measure-${child.properties.id}`;
+        if (typeof child.properties.href === 'string' && child.properties.href.startsWith('#')) child.properties.href = `#measure-${child.properties.href.slice(1)}`;
+        if (Array.isArray(child.properties.ariaDescribedBy)) child.properties.ariaDescribedBy = child.properties.ariaDescribedBy.map(id => `measure-${id}`);
+        visit(child);
+      }
+    };
+    visit(tree);
+  };
+}
