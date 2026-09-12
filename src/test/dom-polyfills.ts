@@ -18,7 +18,9 @@ export class ControlledIntersectionObserver {
   static instances: ControlledIntersectionObserver[] = [];
   readonly targets = new Set<Element>();
   private callback: IntersectionObserverCallback;
-  constructor(callback: IntersectionObserverCallback) {
+  readonly options?: IntersectionObserverInit;
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    this.options = options;
     this.callback = callback;
     ControlledIntersectionObserver.instances.push(this);
   }

@@ -344,7 +344,13 @@ function ReaderSurface({
     </ReaderIdPrefix.Provider>
   );
   if (mode === "continuous")
-    return <article className="document-reader">{renderMarkdown()}</article>;
+    return (
+      <section className="scroll-reader" aria-label="Scroll reading mode">
+        <article className="document-reader" tabIndex={0} aria-label="Document">
+          <div className="reading-column">{renderMarkdown()}</div>
+        </article>
+      </section>
+    );
   const visiblePages = pages.slice(pageIndex, pageIndex + pageStep);
   return (
     <section
@@ -610,6 +616,19 @@ function DocumentWorkspace({
     enabled: view === "read" && readingMode === "continuous",
     revision: observationRevision,
     onObserve: observeNode,
+    onResize: (isAlive) => {
+      // Reflow projects the existing semantic anchor; it never creates a new one.
+      navigationWork.interruptCurrentContext();
+      const isCurrent = navigationWork.capture();
+      navigationWork.schedule(() => {
+        if (!isAlive() || !isCurrent()) return;
+        const surface = document.querySelector('.scroll-reader .document-reader');
+        const target = surface && Array.from(surface.querySelectorAll('[id]')).find(
+          element => element.id === activeNodeId || element.id === readerNodeId(activeNodeId),
+        );
+        target?.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }, { documentId: activeDocumentId, source });
+    },
     work: navigationWork,
   });
   const observeEditorCursor = (offset: number, observedSource: string) => {
@@ -2714,6 +2733,7 @@ function DocumentWorkspace({
               )}
             </section>
           )}
+          <div className={view === "read" && readingMode === "continuous" ? "scroll-navigation" : "reader-utilities"}>
           {view === "read" && (
             <nav className="history-navigation" aria-label="Navigation history">
               <button
@@ -2789,6 +2809,7 @@ function DocumentWorkspace({
               Section context
             </button>
           )}
+          </div>
           <p className="copy-status" aria-live="polite">
             {copyStatus}
           </p>

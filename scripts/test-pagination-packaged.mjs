@@ -69,7 +69,7 @@ try {
   await renderer(`globalThis.layoutErrors = []; window.addEventListener('error', e => layoutErrors.push(e.message));`);
   const settle = async () => {
     await renderer(`document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))`);
-    await until(() => renderer(`document.querySelector('.book-pages')?.getAttribute('aria-busy') === 'false'`));
+    await until(() => renderer(`!!document.querySelector('.scroll-reader') || document.querySelector('.book-pages')?.getAttribute('aria-busy') === 'false'`));
   };
   const mode = async name => {
     await renderer(`Array.from(document.querySelectorAll('[aria-label="Reading layout"] button')).find(b => b.textContent === ${JSON.stringify(name)}).click()`);
@@ -116,6 +116,46 @@ try {
     assert.match(await renderer(`document.querySelector('.page-controls').textContent`), /Page \d+ of \d+/);
     return g[0].height;
   };
+  const scrollGeometry = () => renderer(`(() => {
+    const surface = document.querySelector('.scroll-reader .document-reader');
+    const rect = surface.getBoundingClientRect();
+    const frame = surface.parentElement.getBoundingClientRect();
+    const footer = document.querySelector('.scroll-navigation').getBoundingClientRect();
+    const status = document.querySelector('.statusbar').getBoundingClientRect();
+    const column = surface.querySelector('.reading-column').getBoundingClientRect();
+    const target = Array.from(surface.querySelectorAll('h1')).find(h => h.textContent === 'Section 6').getBoundingClientRect();
+    return { bottom: rect.bottom, footerTop: footer.top, footerBottom: footer.bottom,
+      statusTop: status.top, leftGap: rect.left - frame.left, rightGap: frame.right - rect.right,
+      width: rect.width, column: column.width, targetVisible: target.top >= rect.top - 1 && target.top < rect.bottom,
+      outerScroll: document.documentElement.scrollTop, overflow: getComputedStyle(surface).overflowY };
+  })()`);
+  const verifyScroll = async () => {
+    const g = await scrollGeometry();
+    assert.ok(g.bottom <= g.footerTop && g.footerBottom <= g.statusTop, JSON.stringify(g));
+    assert.ok(g.leftGap >= 24 && g.rightGap >= 24);
+    assert.equal(g.overflow, 'auto'); assert.equal(g.outerScroll, 0);
+    return g;
+  };
+  await mode('Scroll'); await anchor(); await delay(400);
+  const initialScroll = await verifyScroll();
+  assert.equal(initialScroll.targetVisible, true);
+  await renderer(`document.querySelector('[aria-label="Close outline"]').click()`); await settle();
+  const expandedScroll = await verifyScroll();
+  assert.ok(expandedScroll.width > initialScroll.width); assert.equal(expandedScroll.targetVisible, true);
+  await renderer(`document.querySelector('[aria-label="Open outline"]').click()`); await settle();
+  assert.equal((await verifyScroll()).targetVisible, true);
+  await preference('Content width', 480); const thinScroll = await verifyScroll();
+  await preference('Content width', 1040); const wideScroll = await verifyScroll();
+  assert.ok(wideScroll.column > thinScroll.column); assert.equal(wideScroll.targetVisible, true);
+  assert.equal(wideScroll.width, thinScroll.width, 'content preference constrains inner column, not outer frame');
+  await renderer(`(() => { const p = document.querySelector('.document-reader'); p.scrollTop = p.scrollHeight; })()`); await settle();
+  await verifyScroll();
+  assert.equal(await renderer(`(() => { const p = document.querySelector('.document-reader'); return p.scrollTop > 0 && p.querySelector('.reading-column').lastElementChild.getBoundingClientRect().bottom <= p.getBoundingClientRect().bottom; })()`), true);
+  await anchor(); await delay(400);
+  await evaluate('smokeWindow.setSize(1100, 800)'); await settle();
+  assert.equal((await verifyScroll()).targetVisible, true);
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  console.log('PASS Scroll footer occupies layout space, text ends above controls, gutters and inner width respond to outline/preferences/resize, semantic target retained');
   await mode('Page');
   await verifySheets();
   await anchor();

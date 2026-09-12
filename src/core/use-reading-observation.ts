@@ -7,6 +7,7 @@ interface ObservationOptions {
   enabled: boolean;
   revision: number;
   onObserve: (nodeId: string) => void;
+  onResize: (isAlive: () => boolean) => void;
   work: { interruptCurrentContext: () => void; capture: () => () => boolean };
 }
 
@@ -18,16 +19,36 @@ export function useReadingObservation({
   enabled,
   revision,
   onObserve,
+  onResize,
   work,
 }: ObservationOptions) {
-  const [viewportHeight, setViewportHeight] = useState(
-    () => window.innerHeight,
-  );
+  const [geometry, setGeometry] = useState({ height: 0, signature: '' });
+  const resizeCommit = useRef(onResize);
+  useLayoutEffect(() => { resizeCommit.current = onResize; });
   useLayoutEffect(() => {
-    const resize = () => setViewportHeight(window.innerHeight);
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
+    if (!enabled) return;
+    const surface = document.querySelector('.document-reader');
+    const column = surface?.querySelector('.reading-column');
+    if (!surface || !column) return;
+    let alive = true;
+    const read = () => {
+      const outer = surface.getBoundingClientRect();
+      return { height: outer.height, signature: `${outer.width}:${outer.height}:${column.getBoundingClientRect().width}` };
+    };
+    let previous = read();
+    setGeometry(previous);
+    const observer = new ResizeObserver(() => {
+      if (!alive) return;
+      const next = read();
+      if (next.signature === previous.signature) return;
+      previous = next;
+      setGeometry(next);
+      resizeCommit.current(() => alive);
+    });
+    observer.observe(surface);
+    observer.observe(column);
+    return () => { alive = false; observer.disconnect(); };
+  }, [enabled, documentId, source]);
   const commit = useRef(onObserve);
   useLayoutEffect(() => {
     commit.current = onObserve;
@@ -80,8 +101,8 @@ export function useReadingObservation({
         }
       },
       {
-        root: null,
-        rootMargin: `-${viewportHeight * 0.15}px 0px -${viewportHeight * 0.8}px 0px`,
+        root: surface,
+        rootMargin: `-${geometry.height * 0.15}px 0px -${geometry.height * 0.8}px 0px`,
         threshold: 0,
       },
     );
@@ -116,7 +137,7 @@ export function useReadingObservation({
         arm();
     };
     const scroll = (event: Event) => {
-      // Continuous reading currently scrolls the document, not the article.
+      // The document surface owns Scroll-mode scrolling.
       // Ignore independently scrolling descendants such as code blocks/outline.
       if (
         !armed ||
@@ -150,5 +171,5 @@ export function useReadingObservation({
       document.removeEventListener("pointerdown", scrollbar);
       document.removeEventListener("scroll", scroll, true);
     };
-  }, [documentId, source, enabled, revision, viewportHeight, work]);
+  }, [documentId, source, enabled, revision, geometry, work]);
 }

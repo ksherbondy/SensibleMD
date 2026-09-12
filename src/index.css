@@ -1282,3 +1282,62 @@ button {
 .book-pages .page-content.oversized-block {
   overflow: auto;
 }
+
+/* Scroll shares the bounded central reader shell; Split is deliberately separate. */
+.reader-utilities {
+  display: contents;
+}
+.app-shell:has(.scroll-reader) {
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
+}
+.app-shell:has(.scroll-reader) > .statusbar,
+.main-area:has(.scroll-reader) > .reader-toolbar {
+  flex-shrink: 0;
+}
+.scroll-reader {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  padding: 24px 28px;
+  background: #ecefe8;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.scroll-reader .document-reader {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  background: #fffdf8;
+  scrollbar-gutter: stable both-edges;
+}
+.reading-column {
+  box-sizing: border-box;
+  width: min(100%, var(--reader-width));
+  margin-inline: auto;
+  padding: 48px clamp(22px, 5cqw, 52px);
+}
+.scroll-navigation {
+  order: 1;
+  flex: 0 0 auto;
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 28px;
+  background: #ecefe8;
+}
+.scroll-navigation > .history-navigation,
+.scroll-navigation > .chapter-navigation,
+.scroll-navigation > .section-context-button {
+  position: static;
+  box-shadow: none;
+}
+.scroll-navigation > .chapter-navigation {
+  margin-left: auto;
+  order: 1;
+}
