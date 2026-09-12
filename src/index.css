@@ -852,17 +852,12 @@ button {
   }
 }
 .diagnostics-filter {
-  position: absolute;
-  z-index: 5;
-  top: 56px;
-  right: 292px;
   display: flex;
   gap: 2px;
   padding: 3px;
   border: 1px solid #cedbd0;
   border-radius: 4px;
   background: #fffdf8;
-  box-shadow: 0 3px 12px #24413218;
 }
 .diagnostics-filter button {
   min-height: 25px;
@@ -881,12 +876,6 @@ button {
   background: #dcebdd;
   color: #164a39;
   font-weight: 700;
-}
-@media (max-width: 720px) {
-  .diagnostics-filter {
-    right: 10px;
-    top: 55px;
-  }
 }
 .app-shell {
   height: 100svh;
@@ -1045,43 +1034,6 @@ button {
   grid-template-columns: repeat(2, minmax(0, 540px));
 }
 
-/* Split owns its grid; diagnostics never take width from the primary panes. */
-.editor-layout.split-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) minmax(0, min(120px, 20%));
-  grid-template-areas: "editor preview" "findings findings";
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.split-layout > .editor-shell {
-  grid-area: editor;
-  min-width: 0;
-  min-height: 0;
-}
-.split-layout > .authoring-preview {
-  grid-area: preview;
-  min-width: 0;
-  min-height: 0;
-  max-height: none;
-  overflow: auto;
-}
-.split-layout > .findings-panel {
-  grid-area: findings;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-}
-@media (max-width: 720px) {
-  .editor-layout.split-layout {
-    flex: none;
-    height: calc(100svh - 134px);
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, min(120px, 20%));
-    grid-template-areas: "editor" "preview" "findings";
-  }
-}
-
 /* Measured whole-block pages. This is the single final page geometry contract. */
 .book-reader {
   position: relative;
@@ -1231,4 +1183,93 @@ button {
 .scroll-navigation > .chapter-navigation {
   margin-left: auto;
   order: 1;
+}
+
+/* Both authoring modes share a right-side checks column and container breakpoints. */
+.main-area:has(.editor-layout) {
+  container: authoring / inline-size;
+}
+.app-shell:has(.editor-layout) {
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
+}
+.main-area:has(.editor-layout) > .reader-toolbar,
+.app-shell:has(.editor-layout) > .statusbar {
+  flex-shrink: 0;
+}
+.main-area > .editor-layout {
+  --checks-width: clamp(240px, 24cqw, 280px);
+  height: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) var(--checks-width);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "editor findings";
+}
+.main-area > .editor-layout.split-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--checks-width);
+  grid-template-areas: "editor preview findings";
+}
+.main-area > .editor-layout.checks-collapsed {
+  --checks-width: 36px;
+}
+.editor-layout > .editor-shell { grid-area: editor; min-width: 0; min-height: 0; }
+.editor-layout > .authoring-preview { grid-area: preview; min-width: 0; min-height: 0; overflow: auto; }
+.editor-layout > .findings-panel {
+  grid-area: findings;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+}
+.findings-panel > .findings-heading {
+  height: auto;
+  min-height: 50px;
+  gap: 6px;
+  padding-inline: 10px;
+}
+.findings-heading .icon-button { flex: none; width: 28px; height: 28px; }
+.findings-panel > .diagnostics-filter {
+  position: static;
+  margin: 8px 10px;
+  flex-wrap: wrap;
+}
+.checks-restore {
+  grid-area: findings;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 6px;
+  writing-mode: vertical-rl;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: #f6f8f4;
+  color: #37584b;
+  cursor: pointer;
+}
+.checks-restore[hidden], .findings-panel[hidden] { display: none; }
+@container authoring (max-width: 960px) {
+  .main-area > .editor-layout.split-layout {
+    grid-template-columns: minmax(0, 1fr) var(--checks-width);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "editor findings" "preview findings";
+  }
+}
+@container authoring (max-width: 600px) {
+  .main-area > .editor-layout.checks-expanded {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 30%);
+    grid-template-areas: "editor" "findings";
+  }
+  .main-area > .editor-layout.split-layout.checks-expanded {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 25%);
+    grid-template-areas: "editor" "preview" "findings";
+  }
+  .main-area > .editor-layout.split-layout.checks-collapsed {
+    grid-template-columns: minmax(0, 1fr) var(--checks-width);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "editor findings" "preview findings";
+  }
 }

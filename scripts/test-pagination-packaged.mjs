@@ -329,6 +329,67 @@ try {
   assert.deepEqual(await styles('.authoring-preview'), canonical, 'Split Markdown theme matches Scroll');
   assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
   console.log('PASS 21 Markdown token styles match Scroll/Page/Spread/Split and measurement; dark code and yellow strong text exceed 4.5:1 contrast');
+  const checksSource = '# Checks document\n\n### Skipped heading\n\n![](missing.png)\n\n' + Array.from({ length: 150 }, (_, i) => 'Paragraph ' + i + '.').join('\n\n');
+  await writeFile(file, checksSource);
+  await renderer(`document.querySelector('[aria-label="Open Markdown file"]').click()`);
+  await until(() => renderer(`document.body.innerText.includes('Checks document')`));
+  const authoringMode = async name => {
+    await renderer(`Array.from(document.querySelectorAll('[aria-label="Document mode"] button')).find(b => b.textContent === ${JSON.stringify(name)}).click()`);
+    await until(() => renderer(`!!document.querySelector('.cm-scroller')`));
+    await renderer(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
+  };
+  const checksGeometry = () => renderer(`(() => {
+    const box = selector => { const p = document.querySelector(selector), b = p?.getBoundingClientRect(); return b ? { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height } : null; };
+    return { editor: box('.editor-shell'), preview: box('.authoring-preview'), panel: box('.findings-panel'), filters: box('.diagnostics-filter'), layout: box('.editor-layout') };
+  })()`);
+  const toggleChecks = async name => {
+    await renderer(`document.querySelector(${JSON.stringify('[aria-label="' + name + ' authoring checks"]')}).click()`);
+    await renderer(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
+  };
+  await evaluate('smokeWindow.setSize(1600, 1000)');
+  for (const view of ['Write', 'Split']) {
+    await authoringMode(view);
+    const g = await checksGeometry();
+    assert.ok(g.panel.left >= (g.preview ?? g.editor).right - 1, view + ' checks are right-side');
+    assert.ok(g.panel.width >= 240 && g.panel.width <= 280);
+    assert.ok(g.filters.left >= g.panel.left && g.filters.right <= g.panel.right && g.filters.top >= g.panel.top && g.filters.bottom <= g.panel.bottom);
+    if (view === 'Split') assert.ok(g.editor.width >= 300 && g.preview.width >= 300);
+    await renderer(`(() => { document.querySelector('.cm-scroller').scrollTop = 160; const p = document.querySelector('.authoring-preview'); if (p) p.scrollTop = 160; })()`);
+    await renderer(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
+    const positions = () => renderer(`({ editor: document.querySelector('.cm-scroller').scrollTop, preview: document.querySelector('.authoring-preview')?.scrollTop ?? null })`);
+    const beforePositions = await positions();
+    await toggleChecks('Hide');
+    const collapsed = await checksGeometry();
+    assert.equal(collapsed.panel.width, 0); assert.ok(collapsed.editor.width > g.editor.width);
+    if (view === 'Split') assert.ok(collapsed.preview.width > g.preview.width);
+    assert.deepEqual(await positions(), beforePositions, 'collapse retains pane scroll positions');
+    await toggleChecks('Show');
+    assert.deepEqual(await positions(), beforePositions, 'reopen retains pane scroll positions');
+  }
+  await renderer(`Array.from(document.querySelectorAll('.diagnostics-filter button')).find(b => b.textContent === 'Warnings').click()`);
+  const warningFindings = await renderer(`document.querySelector('.findings-panel').textContent`);
+  await toggleChecks('Hide'); await authoringMode('Write');
+  assert.equal(await renderer(`document.querySelector('.findings-panel').hidden`), true);
+  await authoringMode('Split'); await toggleChecks('Show');
+  assert.equal(await renderer(`document.querySelector('.findings-panel').textContent`), warningFindings);
+  // Exercise the renderer fallback below the desktop's normal minimum width.
+  await evaluate('smokeWindow.setMinimumSize(400, 500)');
+  for (const width of [1100, 500]) {
+    await evaluate(`smokeWindow.setSize(${width}, 900)`);
+    await renderer(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
+    const g = await checksGeometry();
+    assert.ok(g.editor.width >= 250 && g.preview.width >= 250 && g.editor.height > 100 && g.preview.height > 100);
+    assert.ok(g.panel.right <= g.layout.right + 1 && g.panel.bottom <= g.layout.bottom + 1);
+    if (width === 1100) assert.ok(g.panel.left >= g.preview.right - 1);
+    else assert.ok(g.panel.top >= g.preview.bottom - 1, 'very narrow checks use bounded bottom row');
+    await toggleChecks('Hide');
+    const c = await checksGeometry();
+    assert.ok(c.editor.right <= c.layout.right && c.preview.right <= c.layout.right);
+    await toggleChecks('Show');
+  }
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  console.log('PASS shared right-side Write/Split checks, in-panel filters, collapse width and scroll retention, filter/mode persistence, and narrow layouts');
+
 
 } finally {
   clearTimeout(deadline);

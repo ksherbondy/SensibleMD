@@ -47,25 +47,12 @@ describe("DOG2-003 Split layout", () => {
       s.unmount();
     }
   });
-  it("defines one Split grid with bounded subordinate diagnostics and independent overflow", () => {
-    // Source-level contracts: jsdom does not calculate grid geometry or scroll extents.
-    expect(css).toContain(
-      'grid-template-areas: "editor preview" "findings findings"',
-    );
-    expect(css).toContain(
-      "grid-template-rows: minmax(0, 1fr) minmax(0, min(120px, 20%))",
-    );
-    expect(css).toMatch(
-      /\.split-layout > \.authoring-preview\s*\{[^}]*overflow:\s*auto/,
-    );
-    expect(css).toMatch(
-      /\.split-layout > \.findings-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*auto/,
-    );
-    expect(css).toContain('grid-template-areas: "editor" "preview" "findings"');
-    expect(css).toMatch(
-      /\.editor-layout\.split-layout\s*\{[^}]*flex:\s*none;[^}]*height:\s*calc\(100svh - 134px\)/,
-    );
-    expect(css).not.toMatch(/\.split-layout[^{}]*\{[^}]*240px/);
-    expect(css).not.toMatch(/\.split-layout[^{}]*\{[^}]*200px/);
+  it("defines right-side checks with container-based narrow fallbacks", () => {
+    expect(css).toContain('grid-template-areas: "editor preview findings"');
+    expect(css).toContain('@container authoring (max-width: 960px)');
+    expect(css).toContain('@container authoring (max-width: 600px)');
+    expect(css).toContain('grid-template-areas: "editor findings" "preview findings"');
+    expect(css).toContain('--checks-width: 36px');
+    expect(css).not.toContain('grid-template-areas: "editor preview" "findings findings"');
   });
 });

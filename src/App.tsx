@@ -1,3 +1,4 @@
+import { AuthoringChecks } from "./components/AuthoringChecks";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
@@ -39,7 +40,6 @@ import {
   Search,
   Save,
   Settings2,
-  Sparkles,
   X,
 } from "lucide-react";
 
@@ -578,6 +578,7 @@ function DocumentWorkspace({
   const [recentDocuments, setRecentDocuments] = useState<
     Array<{ index: number; name: string }>
   >([]);
+  const [checksOpen, setChecksOpen] = useState(true);
   const [findingFilter, setFindingFilter] = useState<FindingSeverity | "all">(
     "all",
   );
@@ -2817,34 +2818,6 @@ function DocumentWorkspace({
           <p className="app-status" aria-live="polite">
             {appStatus}
           </p>
-          {view !== "read" && (
-            <nav
-              className="diagnostics-filter"
-              aria-label="Diagnostic severity filter"
-            >
-              <button
-                type="button"
-                className={findingFilter === "all" ? "selected" : ""}
-                onClick={() => setFindingFilter("all")}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className={findingFilter === "error" ? "selected" : ""}
-                onClick={() => setFindingFilter("error")}
-              >
-                Errors
-              </button>
-              <button
-                type="button"
-                className={findingFilter === "warning" ? "selected" : ""}
-                onClick={() => setFindingFilter("warning")}
-              >
-                Warnings
-              </button>
-            </nav>
-          )}
           {view === "read" ? (
             <ReaderSurface
               source={source}
@@ -2863,7 +2836,7 @@ function DocumentWorkspace({
             />
           ) : (
             <section
-              className={`editor-layout ${view === "split" ? "split-layout" : ""}`}
+              className={`editor-layout ${view === "split" ? "split-layout" : ""} ${checksOpen ? "checks-expanded" : "checks-collapsed"}`}
               aria-label="Markdown authoring"
             >
               <Suspense
@@ -2891,40 +2864,17 @@ function DocumentWorkspace({
                   navigableNodes={semanticDocument.navigableNodes}
                 />
               )}
-              <aside className="findings-panel">
-                <div className="findings-heading">
-                  <Sparkles size={17} />
-                  <span>Authoring checks</span>
-                  <strong>{findings.length}</strong>
-                </div>
-                {findings.length ? (
-                  findings.map((finding) => (
-                    <button
-                      type="button"
-                      key={finding.id}
-                      className={`finding ${finding.severity}`}
-                      onClick={() => {
-                        navigationWork.invalidate();
-                        setDiagnosticJump({
-                          line: finding.line,
-                          isCurrent: navigationWork.capture(),
-                        });
-                      }}
-                    >
-                      <span>
-                        {finding.ruleId} · {finding.confidence}
-                      </span>
-                      <p>{finding.title}</p>
-                      <small>Line {finding.line}</small>
-                    </button>
-                  ))
-                ) : (
-                  <div className="all-clear">
-                    <Check size={22} />
-                    <p>No structural issues found.</p>
-                  </div>
-                )}
-              </aside>
+              <AuthoringChecks
+                open={checksOpen}
+                onOpenChange={setChecksOpen}
+                filter={findingFilter}
+                onFilterChange={setFindingFilter}
+                findings={findings}
+                onFinding={(finding) => {
+                  navigationWork.invalidate();
+                  setDiagnosticJump({ line: finding.line, isCurrent: navigationWork.capture() });
+                }}
+              />
             </section>
           )}
         </main>
