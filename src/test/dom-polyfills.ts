@@ -95,6 +95,10 @@ function defineGlobal(target: object, name: string, value: unknown) {
 }
 
 export function installDomPolyfills() {
+  HTMLElement.prototype.scrollTo = function (options: ScrollToOptions | number = {}, y?: number) {
+    this.scrollTop = typeof options === 'number' ? y ?? 0 : options.top ?? this.scrollTop;
+    this.scrollLeft = typeof options === 'number' ? options : options.left ?? this.scrollLeft;
+  };
   defineGlobal(globalThis, "localStorage", new MemoryStorage());
   defineGlobal(globalThis, "sessionStorage", new MemoryStorage());
 

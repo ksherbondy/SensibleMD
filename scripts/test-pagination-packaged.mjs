@@ -389,6 +389,70 @@ try {
   }
   assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
   console.log('PASS shared right-side Write/Split checks, in-panel filters, collapse width and scroll retention, filter/mode persistence, and narrow layouts');
+  // Exercise real CodeMirror layout with deliberately different source/render heights.
+  let syncSource = Array.from({ length: 24 }, (_, i) => '# Sync ' + i + '\n\n' + words.repeat(2) + '\n\n- List item\n- More text\n\n```txt\n' + 'code line\n'.repeat(2 + i % 5) + '```').join('\n\n');
+  await writeFile(file, syncSource);
+  await renderer(`document.querySelector('[aria-label="Open Markdown file"]').click()`);
+  await until(() => renderer(`document.body.innerText.includes('Sync 0')`));
+  await evaluate('smokeWindow.setSize(1600, 1000)'); await authoringMode('Split');
+  // Test-only access to the installed CodeMirror view; no production bridge is exposed.
+  await renderer(`globalThis.syncEditor = document.querySelector('.cm-content').cmTile.root.view; globalThis.syncScrolls = 0; globalThis.syncBehaviors = []; document.querySelector('.authoring-preview').addEventListener('scroll', () => syncScrolls++); syncEditor.scrollDOM.addEventListener('scroll', () => syncScrolls++); const syncPreview = document.querySelector('.authoring-preview'); const nativeScroll = syncPreview.scrollTo.bind(syncPreview); syncPreview.scrollTo = options => { syncBehaviors.push(options.behavior); nativeScroll(options); }; void 0;`);
+  const syncSettle = async () => { await renderer(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`); await delay(150); };
+  const syncNodes = () => import('../src/core/semantic-document.ts').then(m => m.parseSemanticDocument(syncSource, 0).nodes);
+  const assertAligned = async () => {
+    const nodes = await syncNodes();
+    const result = await renderer(`(() => {
+      const nodes = ${JSON.stringify(nodes)};
+      const p = document.querySelector('.authoring-preview'), e = syncEditor.scrollDOM;
+      const offset = syncEditor.lineBlockAtHeight(e.getBoundingClientRect().top + e.clientHeight / 3 - syncEditor.documentTop + 1).from;
+      const sourceNode = nodes.findLast(n => n.range.start <= offset);
+      const targetY = p.getBoundingClientRect().top + p.clientHeight / 3;
+      const rendered = nodes.filter(n => { const el = p.querySelector('[id="' + (n.type === 'heading' ? n.id : 'reader-node-' + n.id) + '"]'); return el && el.getBoundingClientRect().top <= targetY + 1; }).at(-1);
+      return { editor: sourceNode?.id, preview: rendered?.id, editorHeight: e.clientHeight, previewHeight: p.clientHeight };
+    })()`);
+    assert.equal(result.editor, result.preview, JSON.stringify(result));
+  };
+  const editorDrive = async section => {
+    const offset = syncSource.indexOf('# Sync ' + section + '\n');
+    await renderer(`(() => {
+      const e = syncEditor.scrollDOM;
+      e.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true }));
+      e.scrollTop += syncEditor.documentTop + syncEditor.lineBlockAt(${offset}).top - e.getBoundingClientRect().top - e.clientHeight / 3 + 4;
+    })()`);
+    await syncSettle(); await assertAligned();
+  };
+  const previewDrive = async section => {
+    await renderer(`(() => {
+      const p = document.querySelector('.authoring-preview');
+      const h = Array.from(p.querySelectorAll('h1')).find(h => h.textContent === ${JSON.stringify('Sync ' + section)});
+      p.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true }));
+      p.scrollTop += h.getBoundingClientRect().top - p.getBoundingClientRect().top - p.clientHeight / 3 + 4;
+    })()`);
+    await syncSettle(); await assertAligned();
+  };
+  await editorDrive(8); await previewDrive(15);
+  const settledPositions = () => renderer(`({ editor: syncEditor.scrollDOM.scrollTop, preview: document.querySelector('.authoring-preview').scrollTop, events: syncScrolls })`);
+  const stableSync = await settledPositions(); await delay(250);
+  assert.deepEqual(await settledPositions(), stableSync, 'programmatic projection must settle without oscillation');
+  await renderer(`document.querySelector('.authoring-preview').style.height = '65%'`); await syncSettle();
+  await editorDrive(10); await previewDrive(17);
+  await renderer(`Array.from(document.querySelectorAll('.outline-item')).find(b => b.textContent === 'Sync 12').click()`); await syncSettle();
+  await assertAligned();
+  assert.equal(await renderer(`syncEditor.state.doc.lineAt(syncEditor.state.selection.main.head).text`), '# Sync 12');
+  await authoringMode('Write'); await authoringMode('Split'); await syncSettle();
+  await assertAligned();
+  // Same document, new offsets and DOM IDs after an edit.
+  const prefix = '# Inserted section\n\nNew introduction.\n\n';
+  syncSource = prefix + syncSource;
+  await renderer(`syncEditor.dispatch({ changes: { from: 0, insert: ${JSON.stringify(prefix)} } })`); await syncSettle();
+  await editorDrive(9); await previewDrive(19);
+  await renderer(`(() => { if (!document.querySelector('.settings-popover')) document.querySelector('[aria-label="Reading settings"]').click(); const input = Array.from(document.querySelectorAll('.settings-popover label')).find(l => l.textContent.includes('Reduce motion')).querySelector('input'); if (!input.checked) input.click(); })()`);
+  await editorDrive(11); await previewDrive(20);
+  assert.equal(await renderer(`document.querySelector('.app-shell').classList.contains('reduced-motion')`), true);
+  assert.equal(await renderer(`syncBehaviors.every(behavior => behavior === 'instant')`), true);
+  assert.equal(await renderer(`syncEditor.state.doc.toString()`), syncSource);
+  console.log('PASS semantic Split editor/preview drivers, unequal pane heights, outline selection and alignment, no oscillation, Write/Split transitions, post-edit mappings and reduced motion');
+
 
 
 } finally {

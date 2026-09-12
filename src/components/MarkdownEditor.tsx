@@ -10,6 +10,8 @@ import {
 import { markdown } from "@codemirror/lang-markdown";
 import { ArrowDown, ArrowUp, Heading } from "lucide-react";
 
+import { SPLIT_ANCHOR, type SplitEditor } from "../core/split-sync";
+
 const projectedSelection = Annotation.define<boolean>();
 
 interface MarkdownEditorProps {
@@ -22,6 +24,8 @@ interface MarkdownEditorProps {
   jumpToLine: number | null;
   jumpIsCurrent?: () => boolean;
   navigationJump?: { line: number; isCurrent: () => boolean } | null;
+  onScrollAdapter?: (editor: SplitEditor | null) => void;
+  onNavigate?: (offset: number, source: string) => void;
   onObserveCursor?: (offset: number, source: string) => void;
 }
 
@@ -36,11 +40,16 @@ export function MarkdownEditor({
   jumpIsCurrent,
   navigationJump,
   onObserveCursor,
+  onScrollAdapter,
+  onNavigate,
 }: MarkdownEditorProps) {
+  const currentSource = useRef(value);
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
 
   const callbacks = useRef({
+    onNavigate,
+    onScrollAdapter,
     onChange,
     onCursorLineChange,
     onObserveCursor,
@@ -49,6 +58,8 @@ export function MarkdownEditor({
   });
   useLayoutEffect(() => {
     callbacks.current = {
+      onNavigate,
+      onScrollAdapter,
       onChange,
       onCursorLineChange,
       onObserveCursor,
@@ -85,8 +96,10 @@ export function MarkdownEditor({
         ]),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
-          if (update.docChanged)
-            callbacks.current.onChange(update.state.doc.toString());
+          if (update.docChanged) {
+            currentSource.current = update.state.doc.toString();
+            callbacks.current.onChange(currentSource.current);
+          }
           if (update.selectionSet)
             callbacks.current.onCursorLineChange(
               update.state.doc.lineAt(update.state.selection.main.head).number,
@@ -105,8 +118,21 @@ export function MarkdownEditor({
         }),
       ],
     });
-    view.current = new EditorView({ state, parent: host.current });
-    return () => view.current?.destroy();
+    const editor = new EditorView({ state, parent: host.current });
+    view.current = editor;
+    const registerScrollAdapter = callbacks.current.onScrollAdapter;
+    registerScrollAdapter?.({
+      scrollDOM: editor.scrollDOM,
+      source: () => currentSource.current,
+      offsetAtAnchor: () => editor.lineBlockAtHeight(
+        editor.scrollDOM.getBoundingClientRect().top + editor.scrollDOM.clientHeight * SPLIT_ANCHOR - editor.documentTop,
+      ).from,
+      reveal: (offset) => editor.dispatch({ effects: EditorView.scrollIntoView(
+        Math.max(0, Math.min(offset, editor.state.doc.length)),
+        { y: "start", yMargin: editor.scrollDOM.clientHeight * SPLIT_ANCHOR },
+      ) }),
+    });
+    return () => { registerScrollAdapter?.(null); editor.destroy(); view.current = null; };
   }, []);
 
   useEffect(() => {
@@ -130,6 +156,7 @@ export function MarkdownEditor({
       scrollIntoView: true,
     });
     editor.focus();
+    callbacks.current.onNavigate?.(line.from, currentSource.current);
   }, [jumpToLine, jumpIsCurrent]);
 
   useEffect(() => {
@@ -144,6 +171,7 @@ export function MarkdownEditor({
       scrollIntoView: true,
     });
     editor.focus();
+    callbacks.current.onNavigate?.(line.from, currentSource.current);
   }, [navigationJump]);
 
   return (

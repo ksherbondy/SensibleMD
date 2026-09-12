@@ -1,3 +1,4 @@
+import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
@@ -612,6 +613,7 @@ function DocumentWorkspace({
       current.nodeId === nodeId ? current : { nodeId, wordOffset: 0 },
     );
   };
+  const splitSync = useSplitSync(view === "split", activeDocumentId, semanticDocument, navigationWork, node => observeNode(node.id));
   useReadingObservation({
     documentId: activeDocumentId,
     source,
@@ -1046,7 +1048,7 @@ function DocumentWorkspace({
       );
       surface
         ?.querySelector(`[id="${heading.id}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        ?.scrollIntoView({ behavior: view === "split" ? "auto" : "smooth", block: "start" });
     });
   };
   const navigateHeading = (direction: "next" | "previous") => {
@@ -1267,7 +1269,7 @@ function DocumentWorkspace({
             setNavigationNode(targetHeading.id);
             document
               .getElementById(targetHeading.id)
-              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              ?.scrollIntoView({ behavior: view === "split" ? "auto" : "smooth", block: "start" });
           },
           targetDocument.id,
           targetDocument.source,
@@ -2845,6 +2847,8 @@ function DocumentWorkspace({
                 }
               >
                 <MarkdownEditor
+                  onScrollAdapter={splitSync.setEditor}
+                  onNavigate={splitSync.onNavigate}
                   value={source}
                   onChange={updateSource}
                   cursorLine={editorLine}
