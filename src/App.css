@@ -296,80 +296,11 @@ textarea:focus-visible {
   accent-color: #24735e;
 }
 .document-reader {
-  font-size: var(--reader-scale);
-  line-height: 1.72;
   width: min(760px, calc(100% - 48px));
   margin: 0 auto;
   padding: 56px 0 100px;
-  color: #34443d;
-  overflow-wrap: break-word;
 }
-.document-reader h1,
-.document-reader h2,
-.document-reader h3 {
-  color: #153b31;
-  font-family: var(--display);
-  line-height: 1.15;
-  letter-spacing: 0;
-  scroll-margin-top: 68px;
-}
-.document-reader h1 {
-  font-size: 2.45em;
-  margin: 0 0 0.6em;
-}
-.document-reader h2 {
-  font-size: 1.55em;
-  margin: 2.45em 0 0.7em;
-}
-.document-reader h3 {
-  font-size: 1.18em;
-  margin: 2em 0 0.7em;
-}
-.document-reader p {
-  margin: 0 0 1.1em;
-}
-.document-reader a {
-  color: #0c6755;
-  text-decoration-thickness: 1.5px;
-  text-underline-offset: 3px;
-}
-.document-reader img {
-  max-width: 100%;
-  height: auto;
-  border: 1px solid #d9e0d9;
-}
-.document-reader blockquote {
-  margin: 1.5em 0;
-  padding: 0.2em 1.2em;
-  border-left: 4px solid #dfad4b;
-  background: #fff9e9;
-  color: #5d5745;
-}
-.document-reader code {
-  background: #edf1ea;
-  padding: 0.1em 0.3em;
-  border-radius: 3px;
-  font-family: var(--mono);
-  font-size: 0.88em;
-}
-.document-reader pre {
-  overflow: auto;
-  padding: 16px;
-  background: #173b32;
-  color: #ecf5e9;
-  border-radius: 4px;
-}
-.document-reader table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9em;
-}
-.document-reader th,
-.document-reader td {
-  padding: 8px;
-  border: 1px solid #d7dfd5;
-  text-align: left;
-}
+
 .editor-layout {
   min-height: 0;
   flex: 1;
@@ -526,9 +457,7 @@ textarea:focus-visible {
     width: min(100% - 36px, 760px);
     padding-top: 36px;
   }
-  .document-reader h1 {
-    font-size: 2em;
-  }
+
   .editor-layout {
     grid-template-columns: 1fr;
   }

@@ -283,6 +283,53 @@ try {
   assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
   assert.equal(await verifySheets(), shortHeight);
   console.log('PASS oversized whole paragraph remains complete, focusable and scrollable; no dirty-state mutation');
+  // Compare actual computed Markdown tokens across every rendered presentation.
+  const themeSource = '# Theme\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six\n\nParagraph **strong** and *emphasis* with `inline` and [link](https://example.com).\n\n- Unordered\n\n1. Ordered\n\n> Quotation\n\n```txt\ncode sample\n```\n\n---\n\n| A | B |\n| - | - |\n| one | two |';
+  await writeFile(file, themeSource);
+  await renderer(`document.querySelector('[aria-label="Open Markdown file"]').click()`);
+  await until(() => renderer(`document.body.innerText.includes('Theme')`));
+  const selectors = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'li', 'blockquote', 'pre', 'pre code', 'p code', 'strong', 'em', 'a', 'hr', 'table', 'th', 'td'];
+  const styles = root => renderer(`(() => {
+    const root = document.querySelector(${JSON.stringify(root)});
+    return Object.fromEntries(${JSON.stringify(selectors)}.flatMap(selector => {
+      const element = root.querySelector(selector); if (!element) return [];
+      const css = getComputedStyle(element);
+      const properties = ['color', 'backgroundColor', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'padding', 'marginTop', 'marginBottom', 'borderTopColor', 'borderTopWidth', 'borderLeftColor', 'borderLeftWidth', 'borderRadius', 'textDecorationLine'];
+      return [[selector, Object.fromEntries(properties.map(key => [key, css[key]]))]];
+    }));
+  })()`);
+  await mode('Scroll'); await preference('Text size', 100);
+  const canonical = await styles('.document-reader');
+  assert.equal(Object.keys(canonical).length, selectors.length);
+  const contrast = (foreground, background) => {
+    const luminance = color => color.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const a = luminance(foreground), b = luminance(background);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+  assert.equal(canonical.pre.backgroundColor, 'rgb(23, 59, 50)');
+  assert.equal(canonical['pre code'].color, 'rgb(236, 245, 233)');
+  assert.ok(contrast(canonical['pre code'].color, canonical.pre.backgroundColor) >= 4.5);
+  assert.equal(canonical.strong.backgroundColor, 'rgb(244, 215, 123)');
+  assert.ok(contrast(canonical.strong.color, canonical.strong.backgroundColor) >= 4.5);
+  for (const layout of ['Page', 'Spread']) {
+    await mode(layout);
+    await renderer(`Array.from(document.querySelectorAll('.outline-item')).find(b => b.textContent === 'Theme').click()`); await settle();
+    const combined = {};
+    for (;;) {
+      // Compare the first occurrence in source order, as in the continuous render.
+      for (const [token, style] of Object.entries(await styles('.book-pages'))) combined[token] ??= style;
+      if (await renderer(`document.querySelector('[aria-label="Next page"]').disabled`)) break;
+      await renderer(`document.querySelector('[aria-label="Next page"]').click()`); await settle();
+    }
+    assert.deepEqual(combined, canonical, layout + ' Markdown theme matches Scroll');
+    assert.deepEqual(await styles('.pagination-measurement'), canonical, 'measurement theme matches visible theme');
+  }
+  await renderer(`Array.from(document.querySelectorAll('[aria-label="Document mode"] button')).find(b => b.textContent === 'Split').click()`);
+  await until(() => renderer(`!!document.querySelector('.authoring-preview')`));
+  assert.deepEqual(await styles('.authoring-preview'), canonical, 'Split Markdown theme matches Scroll');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  console.log('PASS 21 Markdown token styles match Scroll/Page/Spread/Split and measurement; dark code and yellow strong text exceed 4.5:1 contrast');
+
 } finally {
   clearTimeout(deadline);
   socket?.close();

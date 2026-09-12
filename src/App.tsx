@@ -125,6 +125,7 @@ import {
 
 //Styles
 import "./App.css";
+import "./rendered-markdown.css";
 
 type ViewMode = "read" | "write" | "split";
 type ReadingMode = "continuous" | "single" | "spread";
@@ -346,7 +347,7 @@ function ReaderSurface({
   if (mode === "continuous")
     return (
       <section className="scroll-reader" aria-label="Scroll reading mode">
-        <article className="document-reader" tabIndex={0} aria-label="Document">
+        <article className="document-reader rendered-markdown" tabIndex={0} aria-label="Document">
           <div className="reading-column">{renderMarkdown()}</div>
         </article>
       </section>
@@ -362,7 +363,7 @@ function ReaderSurface({
         {!pagesReady ? <p role="status">Preparing pages…</p> : !pages.length && <p>No readable content.</p>}
         {visiblePages.map((page) => (
           <article
-            className="book-page"
+            className="book-page rendered-markdown"
             key={page.pageNumber}
             aria-label={`Page ${page.pageNumber}`}
           >
@@ -375,7 +376,7 @@ function ReaderSurface({
           </article>
         ))}
       </div>
-      <article className="book-page pagination-measurement" ref={measurementRef} aria-hidden="true" inert>
+      <article className="book-page pagination-measurement rendered-markdown" ref={measurementRef} aria-hidden="true" inert>
         <div className="page-content">{renderMarkdown(undefined, true)}</div>
       </article>
       <div className="page-controls">
@@ -420,7 +421,7 @@ function PreviewSurface({
 }) {
   return (
     <article
-      className="authoring-preview"
+      className="authoring-preview rendered-markdown"
       aria-label="Rendered Markdown preview"
     >
       <ReaderNodeContext.Provider value={navigableNodes}>

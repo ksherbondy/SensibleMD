@@ -1,0 +1,96 @@
+/* Shared rendered identity. Shell sizing, page packing and scrolling live elsewhere. */
+.rendered-markdown {
+  color: #34443d;
+  background: #fffdf8;
+  font-size: var(--reader-scale);
+  line-height: var(--reader-line-height);
+  overflow-wrap: break-word;
+}
+.rendered-markdown :is(h1, h2, h3, h4, h5, h6) {
+  color: #153b31;
+  font-family: var(--display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0;
+  scroll-margin-top: 68px;
+}
+.rendered-markdown h1 { font-size: 2.45em; margin: 0 0 0.6em; }
+.rendered-markdown h2 { font-size: 1.55em; margin: 2.45em 0 0.7em; }
+.rendered-markdown h3 { font-size: 1.18em; margin: 2em 0 0.7em; }
+.rendered-markdown h4 { font-size: 1.1em; margin: 1.8em 0 0.7em; }
+.rendered-markdown h5 { font-size: 1em; margin: 1.6em 0 0.7em; }
+.rendered-markdown h6 { font-size: 0.95em; margin: 1.6em 0 0.7em; }
+.rendered-markdown p { margin: 0 0 1.1em; }
+.rendered-markdown :is(ul, ol) { margin: 1em 0; padding-left: 2em; }
+.rendered-markdown li { margin: 0; }
+.rendered-markdown a {
+  color: #0c6755;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.rendered-markdown img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #d9e0d9;
+}
+.rendered-markdown blockquote {
+  margin: 1.5em 0;
+  padding: 0.2em 1.2em;
+  border-left: 4px solid #dfad4b;
+  background: #fff9e9;
+  color: #5d5745;
+}
+.rendered-markdown strong {
+  font-weight: 700;
+  color: #34443d;
+  background: #f4d77b;
+}
+.rendered-markdown em { font-style: italic; font-synthesis: style; }
+.rendered-markdown code {
+  color: #34443d;
+  background: #edf1ea;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+.rendered-markdown pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 1em 0;
+  padding: 16px;
+  background: #173b32;
+  color: #ecf5e9;
+  border-radius: 4px;
+  font-family: var(--mono);
+}
+.rendered-markdown pre code {
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.rendered-markdown hr {
+  width: 100%;
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid #d7dfd5;
+}
+.rendered-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.rendered-markdown :is(th, td) {
+  padding: 8px;
+  border: 1px solid #d7dfd5;
+  text-align: left;
+}
+@media (max-width: 720px) {
+  .rendered-markdown h1 { font-size: 2em; }
+}

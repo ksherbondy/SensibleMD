@@ -195,37 +195,8 @@ button {
   padding: 48px 52px 36px;
   background: #fffdf8;
   box-shadow: 0 2px 8px #3046351b;
-  color: #34443d;
-  font-size: var(--reader-scale);
-  line-height: 1.65;
-  overflow-wrap: break-word;
 }
-.book-page h1,
-.book-page h2,
-.book-page h3 {
-  font-family: var(--display);
-  color: #153b31;
-  line-height: 1.15;
-}
-.book-page h1 {
-  font-size: 2em;
-}
-.book-page h2 {
-  font-size: 1.45em;
-}
-.book-page h3 {
-  font-size: 1.15em;
-}
-.book-page p {
-  margin-block: 0 1em;
-}
-.book-page a {
-  color: #0c6755;
-}
-.book-page img {
-  max-width: 100%;
-  height: auto;
-}
+
 .page-controls {
   display: flex;
   align-items: center;
@@ -651,70 +622,12 @@ button {
   padding: 34px 38px 80px;
   background: #fcfdf9;
   border-right: 1px solid var(--line);
-  color: #34443d;
-  font-size: 15px;
-  line-height: 1.68;
-  overflow-wrap: break-word;
 }
-.authoring-preview h1,
-.authoring-preview h2,
-.authoring-preview h3 {
-  color: #153b31;
-  font-family: var(--display);
-  line-height: 1.16;
-}
-.authoring-preview h1 {
-  font-size: 2em;
-  margin-top: 0;
-}
-.authoring-preview h2 {
-  font-size: 1.45em;
-  margin-top: 2em;
-}
-.authoring-preview h3 {
-  font-size: 1.15em;
-  margin-top: 1.6em;
-}
-.authoring-preview p {
-  margin: 0 0 1em;
-}
-.authoring-preview a {
-  color: #0c6755;
-  text-underline-offset: 3px;
-}
-.authoring-preview code {
-  padding: 0.1em 0.3em;
-  border-radius: 3px;
-  background: #edf1ea;
-  font: 0.88em var(--mono);
-}
-.authoring-preview pre {
-  overflow: auto;
-  padding: 14px;
-  background: #173b32;
-  color: #eaf5e9;
-  border-radius: 4px;
-}
-.authoring-preview img {
-  max-width: 100%;
-  height: auto;
-}
-.authoring-preview blockquote {
-  margin: 1.2em 0;
-  padding: 0.2em 1em;
-  border-left: 3px solid #dfad4b;
-  background: #fff9e9;
-}
+
 .document-reader {
   width: min(var(--reader-width), calc(100% - 48px));
-  line-height: var(--reader-line-height);
 }
-.book-page {
-  line-height: var(--reader-line-height);
-}
-.authoring-preview {
-  line-height: var(--reader-line-height);
-}
+
 .settings-popover {
   width: 240px;
 }
@@ -995,16 +908,7 @@ button {
   overflow: auto;
   padding-bottom: 120px;
 }
-.document-reader pre {
-  max-width: 100%;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.document-reader pre code {
-  color: #ecf5e9;
-  background: transparent;
-}
+
 .book-reader {
   height: calc(100svh - 106px);
   overflow: hidden;
@@ -1019,16 +923,7 @@ button {
   flex: 0 0 auto;
   padding-top: 10px;
 }
-.book-page pre {
-  max-width: 100%;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.book-page pre code {
-  color: #ecf5e9;
-  background: transparent;
-}
+
 @media (max-width: 720px) {
   .app-shell {
     height: auto;
@@ -1216,11 +1111,7 @@ button {
   /* Flex items do not collapse margins: measured sums equal visible consumed space. */
   min-width: 0;
 }
-.book-page table {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-}
+
 .book-page.pagination-measurement {
   position: fixed;
   left: -100000px;
