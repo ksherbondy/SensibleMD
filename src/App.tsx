@@ -72,7 +72,7 @@ import {
   adjacentNavigableNode,
   bookmarkedHeadings,
 } from "./core/reader-navigation";
-import type { CommandDefinition } from "./core/commands";
+import { createWorkspaceCommands } from "./core/workspace-commands";
 import {
   NavigationHistory,
   type NavigationReason,
@@ -1482,421 +1482,158 @@ function DocumentWorkspace({
         ? items.filter((item) => item !== activeHeading)
         : [...items, activeHeading],
     );
-  const commands: CommandDefinition[] = [
-    {
-      id: "app.openFile",
-      title: "Open Markdown File",
-      keywords: ["document", "file"],
-      shortcut: "Cmd/Ctrl+O",
-      scope: "global",
-      enabled: true,
-      execute: () => void openDocument(),
-    },
-    ...recentDocuments.map((recent) => ({
-      id: `app.openRecent.${recent.index}`,
-      title: `Open Recent: ${recent.name}`,
-      keywords: ["recent", "document", "file"],
-      scope: "global" as const,
-      enabled: true,
-      execute: () => void openRecentDocument(recent.index),
-    })),
-    {
-      id: "app.openCollection",
-      title: "Open Markdown Collection",
-      keywords: ["chapters", "book", "multiple files"],
-      scope: "global",
-      enabled: true,
-      execute: () => collectionInput.current?.click(),
-    },
-    {
-      id: "file.close",
-      title: "Close Document",
-      keywords: ["document", "close"],
-      scope: "global",
-      enabled: !closing,
-      execute: () => void closeDocument(),
-    },
-    {
-      id: "file.save",
-      title: "Save",
-      keywords: ["document", "save"],
-      shortcut: "Cmd/Ctrl+S",
-      scope: "global",
-      enabled: saveEnabled,
-      disabledReason: saveEnabled ? undefined : saveUnavailable ? "Native saving is unavailable. Use Download copy to export." : "No unsaved changes.",
-      execute: saveFile,
-    },
-    {
-      id: "file.downloadCopy",
-      title: "Download copy",
-      keywords: ["document", "export", "download"],
-      scope: "global",
-      enabled: true,
-      execute: downloadCopy,
-    },
-    {
-      id: "reader.nextHeading",
-      title: "Next Heading",
-      keywords: ["navigate", "forward", "section"],
-      shortcut: "Alt+Down",
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentHeading(semanticDocument.headings, activeHeading, "next"),
-        ),
-      disabledReason: "No next heading is available.",
-      execute: () => navigateHeading("next"),
-    },
-    {
-      id: "reader.previousHeading",
-      title: "Previous Heading",
-      keywords: ["navigate", "back", "section"],
-      shortcut: "Alt+Up",
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentHeading(semanticDocument.headings, activeHeading, "previous"),
-        ),
-      disabledReason: "No previous heading is available.",
-      execute: () => navigateHeading("previous"),
-    },
-    {
-      id: "reader.nextParagraph",
-      title: "Next Paragraph",
-      keywords: ["navigate", "forward", "text"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "paragraph",
-            "next",
+  // The pure factory stores these callbacks; it never invokes ref-reading actions during render.
+  // oxlint-disable-next-line react/refs
+  const commands = createWorkspaceCommands({
+    facts: {
+      recentDocuments,
+      saveUnavailable,
+      enabled: {
+        "file.close": !closing,
+        "file.save": saveEnabled,
+        "reader.nextHeading":
+          view === "read" &&
+          Boolean(
+            adjacentHeading(semanticDocument.headings, activeHeading, "next"),
           ),
-        ),
-      disabledReason: "No next paragraph is available.",
-      execute: () => navigateStructure("paragraph", "next"),
-    },
-    {
-      id: "reader.previousParagraph",
-      title: "Previous Paragraph",
-      keywords: ["navigate", "back", "text"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "paragraph",
-            "previous",
+        "reader.previousHeading":
+          view === "read" &&
+          Boolean(
+            adjacentHeading(semanticDocument.headings, activeHeading, "previous"),
           ),
-        ),
-      disabledReason: "No previous paragraph is available.",
-      execute: () => navigateStructure("paragraph", "previous"),
-    },
-    {
-      id: "reader.nextLink",
-      title: "Next Link",
-      keywords: ["navigate", "forward"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "link",
-            "next",
+        "reader.nextParagraph":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "paragraph",
+              "next",
+            ),
           ),
-        ),
-      disabledReason: "No next link is available.",
-      execute: () => navigateStructure("link", "next"),
-    },
-    {
-      id: "reader.nextImage",
-      title: "Next Image",
-      keywords: ["navigate", "forward"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "image",
-            "next",
+        "reader.previousParagraph":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "paragraph",
+              "previous",
+            ),
           ),
-        ),
-      disabledReason: "No next image is available.",
-      execute: () => navigateStructure("image", "next"),
-    },
-    {
-      id: "reader.nextTable",
-      title: "Next Table",
-      keywords: ["navigate", "forward"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "table",
-            "next",
+        "reader.nextLink":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "link",
+              "next",
+            ),
           ),
-        ),
-      disabledReason: "No next table is available.",
-      execute: () => navigateStructure("table", "next"),
-    },
-    {
-      id: "reader.nextCodeBlock",
-      title: "Next Code Block",
-      keywords: ["navigate", "forward"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "code",
-            "next",
+        "reader.nextImage":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "image",
+              "next",
+            ),
           ),
-        ),
-      disabledReason: "No next code block is available.",
-      execute: () => navigateStructure("code", "next"),
-    },
-    {
-      id: "reader.copyCurrentParagraph",
-      title: "Copy Current Paragraph",
-      keywords: ["reader", "clipboard", "text"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "paragraph",
-            "next",
+        "reader.nextTable":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "table",
+              "next",
+            ),
           ),
-        ),
-      disabledReason: "No paragraph is available to copy.",
-      execute: () => copyCurrentNode("paragraph"),
-    },
-    {
-      id: "reader.copyCurrentCodeBlock",
-      title: "Copy Current Code Block",
-      keywords: ["reader", "clipboard", "code"],
-      scope: "reader",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentNavigableNode(
-            semanticDocument.navigableNodes,
-            activeNodeId || activeHeading,
-            "code",
-            "next",
+        "reader.nextCodeBlock":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "code",
+              "next",
+            ),
           ),
-        ),
-      disabledReason: "No code block is available to copy.",
-      execute: () => copyCurrentNode("code"),
-    },
-    {
-      id: "history.back",
-      title: "Go Back",
-      keywords: ["history", "previous location"],
-      scope: "reader",
-      enabled: historyRef.current.canGoBack(),
-      disabledReason: "No previous reading location is available.",
-      execute: () => goThroughHistory("back"),
-    },
-    {
-      id: "history.forward",
-      title: "Go Forward",
-      keywords: ["history", "next location"],
-      scope: "reader",
-      enabled: historyRef.current.canGoForward(),
-      disabledReason: "No forward reading location is available.",
-      execute: () => goThroughHistory("forward"),
-    },
-    {
-      id: "book.nextPage",
-      title: "Next Page",
-      keywords: ["book", "forward", "turn"],
-      shortcut: "Right Arrow",
-      scope: "book",
-      enabled:
-        view === "read" &&
-        readingMode !== "continuous" &&
-        pageIndex + pageStep < pages.length,
-      disabledReason: "No next page is available.",
-      execute: () => turnPage("next"),
-    },
-    {
-      id: "book.previousPage",
-      title: "Previous Page",
-      keywords: ["book", "back", "turn"],
-      shortcut: "Left Arrow",
-      scope: "book",
-      enabled: view === "read" && readingMode !== "continuous" && pageIndex > 0,
-      disabledReason: "No previous page is available.",
-      execute: () => turnPage("previous"),
-    },
-    {
-      id: "book.nextChapter",
-      title: "Next Chapter",
-      keywords: ["book", "collection", "forward"],
-      scope: "book",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentCollectionDocument(collection, activeDocumentId, "next"),
-        ),
-      disabledReason: "No next chapter is available.",
-      execute: () => navigateChapter("next"),
-    },
-    {
-      id: "book.previousChapter",
-      title: "Previous Chapter",
-      keywords: ["book", "collection", "back"],
-      scope: "book",
-      enabled:
-        view === "read" &&
-        Boolean(
-          adjacentCollectionDocument(collection, activeDocumentId, "previous"),
-        ),
-      disabledReason: "No previous chapter is available.",
-      execute: () => navigateChapter("previous"),
-    },
-    {
-      id: "search.nextResult",
-      title: "Next Search Result",
-      keywords: ["find", "forward", "match"],
-      scope: "search",
-      enabled: searchResults.length > 0,
-      disabledReason: "Enter a search query with results first.",
-      execute: () => navigateSearchResults("next"),
-    },
-    {
-      id: "search.previousResult",
-      title: "Previous Search Result",
-      keywords: ["find", "back", "match"],
-      scope: "search",
-      enabled: searchResults.length > 0,
-      disabledReason: "Enter a search query with results first.",
-      execute: () => navigateSearchResults("previous"),
-    },
-    {
-      id: "search.returnToOrigin",
-      title: "Return to Search Origin",
-      keywords: ["find", "back", "reading position"],
-      scope: "search",
-      enabled: searchOrigin !== null,
-      disabledReason:
-        "Search result navigation has not moved from a reading position.",
-      execute: returnToSearchOrigin,
-    },
-    {
-      id: "bookmark.addCurrentPosition",
-      title: "Toggle Current Bookmark",
-      keywords: ["save", "section"],
-      scope: "reader",
-      enabled: view === "read" && Boolean(activeHeading),
-      disabledReason: "Navigate to a heading before bookmarking it.",
-      execute: toggleBookmark,
-    },
-    {
-      id: "accessibility.showCurrentContext",
-      title: "Show Current Section Context",
-      keywords: ["accessibility", "summary", "describe", "section"],
-      scope: "reader",
-      enabled: view === "read",
-      execute: () => setSectionSummaryOpen(true),
-    },
-    {
-      id: "editor.enterRawMode",
-      title: "Enter Writing Mode",
-      keywords: ["edit", "source"],
-      shortcut: "Cmd/Ctrl+E",
-      scope: "global",
-      enabled: view !== "write",
-      disabledReason: "Already in writing mode.",
-      execute: () => setView("write"),
-    },
-    {
-      id: "editor.enterSplitMode",
-      title: "Enter Split Preview",
-      keywords: ["edit", "source", "rendered", "side by side"],
-      scope: "global",
-      enabled: view !== "split",
-      disabledReason: "Already in split preview.",
-      execute: () => setView("split"),
-    },
-    {
-      id: "reader.enterRenderedMode",
-      title: "Enter Reading Mode",
-      keywords: ["preview", "rendered"],
-      shortcut: "Cmd/Ctrl+E",
-      scope: "global",
-      enabled: view !== "read",
-      disabledReason: "Already in reading mode.",
-      execute: () => setView("read"),
-    },
-    {
-      id: "accessibility.openFindings",
-      title: "Show Authoring Checks",
-      keywords: ["accessibility", "diagnostics", "issues"],
-      scope: "editor",
-      enabled: true,
-      execute: () => setView("write"),
-    },
-    {
-      id: "diagnostics.showErrors",
-      title: "Show Diagnostic Errors",
-      keywords: ["accessibility", "findings", "filter"],
-      scope: "editor",
-      enabled: true,
-      execute: () => {
-        setFindingFilter("error");
-        setView("write");
+        "reader.copyCurrentParagraph":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "paragraph",
+              "next",
+            ),
+          ),
+        "reader.copyCurrentCodeBlock":
+          view === "read" &&
+          Boolean(
+            adjacentNavigableNode(
+              semanticDocument.navigableNodes,
+              activeNodeId || activeHeading,
+              "code",
+              "next",
+            ),
+          ),
+        "history.back": historyRef.current.canGoBack(),
+        "history.forward": historyRef.current.canGoForward(),
+        "book.nextPage":
+          view === "read" &&
+          readingMode !== "continuous" &&
+          pageIndex + pageStep < pages.length,
+        "book.previousPage": view === "read" && readingMode !== "continuous" && pageIndex > 0,
+        "book.nextChapter":
+          view === "read" &&
+          Boolean(
+            adjacentCollectionDocument(collection, activeDocumentId, "next"),
+          ),
+        "book.previousChapter":
+          view === "read" &&
+          Boolean(
+            adjacentCollectionDocument(collection, activeDocumentId, "previous"),
+          ),
+        "search.nextResult": searchResults.length > 0,
+        "search.previousResult": searchResults.length > 0,
+        "search.returnToOrigin": searchOrigin !== null,
+        "bookmark.addCurrentPosition": view === "read" && Boolean(activeHeading),
+        "accessibility.showCurrentContext": view === "read",
+        "editor.enterRawMode": view !== "write",
+        "editor.enterSplitMode": view !== "split",
+        "reader.enterRenderedMode": view !== "read",
       },
     },
-    {
-      id: "diagnostics.showWarnings",
-      title: "Show Diagnostic Warnings",
-      keywords: ["accessibility", "findings", "filter"],
-      scope: "editor",
-      enabled: true,
-      execute: () => {
-        setFindingFilter("warning");
+    actions: {
+      openDocument,
+      openRecentDocument,
+      openCollection: () => collectionInput.current?.click(),
+      closeDocument,
+      saveFile,
+      downloadCopy,
+      navigateHeading,
+      navigateStructure,
+      copyCurrentNode,
+      goThroughHistory,
+      turnPage,
+      navigateChapter,
+      navigateSearchResults,
+      returnToSearchOrigin,
+      toggleBookmark,
+      showCurrentContext: () => setSectionSummaryOpen(true),
+      enterMode: (mode) => setView(mode),
+      showAuthoringChecks: () => setView("write"),
+      showDiagnostics: (filter) => {
+        setFindingFilter(filter);
         setView("write");
       },
+      showReadingSettings: () => setSettingsOpen(true),
     },
-    {
-      id: "diagnostics.showAll",
-      title: "Show All Diagnostics",
-      keywords: ["accessibility", "findings", "filter"],
-      scope: "editor",
-      enabled: true,
-      execute: () => {
-        setFindingFilter("all");
-        setView("write");
-      },
-    },
-    {
-      id: "settings.show",
-      title: "Show Reading Settings",
-      keywords: ["text", "size", "preferences"],
-      scope: "global",
-      enabled: true,
-      execute: () => setSettingsOpen(true),
-    },
-  ];
+  });
 
   const preferences = normalizeReaderPreferences({
     fontScale,
