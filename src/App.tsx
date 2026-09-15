@@ -1,6 +1,7 @@
 import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
 import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
+import { WorkspaceOutline } from "./components/workspace/WorkspaceOutline";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
@@ -1679,64 +1680,23 @@ function DocumentWorkspace({
         </Suspense>
       )}
       <div className={`workspace ${outlineOpen ? "" : "outline-closed"}`}>
-        <aside
-          className={`outline-panel ${outlineOpen ? "" : "collapsed"}`}
-          aria-label="Document outline"
-        >
-          <div className="panel-heading">
-            <span>
-              {collection.length > 1
-                ? `Chapters · ${collection.length}`
-                : "Outline"}
-            </span>
-            <button
-              type="button"
-              className="icon-button small"
-              onClick={() => setOutlineOpen(false)}
-              aria-label="Close outline"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          {collection.length > 1 && (
-            <nav className="chapter-list" aria-label="Collection chapters">
-              {collection.map((document, index) => (
-                <button
-                  type="button"
-                  key={document.id}
-                  onClick={() => switchDocument(document)}
-                  className={document.id === activeDocumentId ? "active" : ""}
-                >
-                  <small>{String(index + 1).padStart(2, "0")}</small>
-                  {document.name}
-                </button>
-              ))}
-            </nav>
-          )}
-          <nav>
-            {headings.length ? (
-              headings.map((heading) => (
-                <button
-                  type="button"
-                  key={heading.id}
-                  onClick={() => goToHeading(heading, "outline")}
-                  aria-current={
-                    activeHeading === heading.id ? "location" : undefined
-                  }
-                  className={`outline-item level-${heading.level} ${activeHeading === heading.id ? "active" : ""}`}
-                >
-                  {heading.text}
-                </button>
-              ))
-            ) : (
-              <p className="empty-state">Headings will appear here.</p>
-            )}
-          </nav>
-          <div className="outline-footer">
-            <span>{wordCount.toLocaleString()} words</span>
-            <span>{headings.length} sections</span>
-          </div>
-        </aside>
+        <WorkspaceOutline
+          collection={collection}
+          headings={headings}
+          activeDocumentId={activeDocumentId}
+          activeHeading={activeHeading}
+          outlineOpen={outlineOpen}
+          wordCount={wordCount}
+          onClose={() => setOutlineOpen(false)}
+          onSelectDocument={(documentId) => {
+            const document = collection.find((item) => item.id === documentId);
+            if (document) switchDocument(document);
+          }}
+          onSelectHeading={(headingId) => {
+            const heading = headings.find((item) => item.id === headingId);
+            if (heading) goToHeading(heading, "outline");
+          }}
+        />
         <main className="main-area">
           <div className="reader-toolbar">
             {!outlineOpen && (
