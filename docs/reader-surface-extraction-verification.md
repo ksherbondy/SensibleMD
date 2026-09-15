@@ -26,3 +26,29 @@ Characterization details: Reader uses block nodes including thematic breaks, whe
 During test authoring, two fixture expectations were corrected from source before finalizing the baseline: the observed element is the measurement content rather than its outer article, and a selected initial heading must be established explicitly before asserting unchanged Split location. No production behavior or existing assertion was changed to make characterization pass.
 
 Limits: shell launch is mocked in the new main-process test; no actual external browser is opened. The existing packaged script establishes file-loaded layout, not hostile-link end-to-end security or physical AT behavior. VoiceOver, Windows and Linux were **NOT TESTED**. No URL policy, navigation, IPC or accessibility behavior was changed.
+
+## Step 1 extraction
+
+Characterization commit: `7646377` (`test: characterize reader surfaces before extraction`).
+
+Moved the existing `ReaderIdPrefix`, `ReaderNodeContext`, `HeadingContext`, block/heading renderer mappings, `readerNodeId`, `ReaderSurface`, and `PreviewSurface` into `src/components/reader-surfaces.tsx`. Contexts remain private singleton definitions in that module. `Heading` and `ReadingMode` types move with their surface contract and are imported by App. App imports `readerNodeId` from the same module so navigation and rendering retain one ID implementation.
+
+No hook ownership, JSX nesting, CSS, plugin configuration, source model, IPC, editor/palette lazy import or lifecycle code changed. A source comparison against the characterization commit confirmed the moved bodies are identical except export keywords, a scoped lint comment and the terminal blank line. The entire remaining `DocumentWorkspace`/outer `App` body is byte-identical. CSS imports remain in App in their original order.
+
+One extraction-specific tooling detail arose: exporting `readerNodeId` alongside components triggers the Fast Refresh `react/only-export-components` warning. A documented, single-line suppression on that helper preserves the intended shared ID boundary without adding another module or changing behavior. No existing lint warnings were fixed. Fast Refresh behavior itself was not tested; production/lazy bundling was built and packaged.
+
+| Check | Before extraction | After extraction |
+|---|---|---|
+| Full `npm test` (includes reader, navigation, pagination, measured pagination, theme, split-layout, scroll-shell and new characterization) | 235 passed, 70 TODO, 36 files | 235 passed, 70 TODO, 36 files |
+| TypeScript/Vite build | PASS | PASS |
+| Lint | Exit 0, 33 existing warnings | Exit 0, same 33 warnings after normalizing line numbers, output order and dependency-list order |
+| Matching macOS arm64 package build | PASS | PASS |
+| `scripts/test-pagination-packaged.mjs` | PASS, exit 0 | PASS, exit 0 |
+| Dev server | No listener on port 5175; script verifies file-loaded launch | Script verifies file-loaded launch; no dev server started |
+| Physical AT / Windows / Linux | NOT TESTED | NOT TESTED |
+
+Packaged evidence includes actual font/preference/resize geometry, 37 blocks rendered exactly once, oversized content reachability, shared theme, measurement, authoring layout and Split synchronization. The package is a local unsigned verification artifact: no Developer ID signing identity was available. Native link handoff remains mocked in the new main-handler characterization, not end-to-end external browser verification.
+
+No substantive deviation from Phase 1/1.5 was required. The observer target and Preview-ID details above refine existing coupling; no new runtime dependency or behavior-changing integration was introduced. The baseline fixture corrections were completed before the characterization commit and production extraction.
+
+Step 1 is complete with intended observable behavior change **none**. Remaining limitations are actual assistive-technology/other-platform validation, end-to-end external-link handling, and development Fast Refresh behavior. Existing security/activation issues remain outside this extraction. Step 2 is ready for review against its own command characterization gate (C12); it has **not begun** and still requires explicit authorization.
