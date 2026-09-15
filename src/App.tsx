@@ -1,5 +1,6 @@
 import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
+import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
@@ -20,17 +21,9 @@ import {
 } from "react";
 import {
   Bookmark,
-  BookOpen,
-  Check,
   ChevronLeft,
   ChevronRight,
-  Command,
-  Download,
-  FileText,
-  FolderOpen,
   Search,
-  Save,
-  Settings2,
   X,
 } from "lucide-react";
 
@@ -1657,96 +1650,23 @@ function DocumentWorkspace({
         } as React.CSSProperties
       }
     >
-      <header className="topbar">
-        <div className="brand" aria-label="SensibleMD">
-          <span className="brand-mark">
-            <BookOpen size={20} />
-          </span>
-          <span>SensibleMD</span>
-        </div>
-        <div className="document-title">
-          <FileText size={16} />
-          <span>{documentName}</span>
-          <span className="saved">
-            {!isDirty && <Check size={14} />}
-            {isDirty ? "Unsaved changes" : "No unsaved changes"}
-          </span>
-        </div>
-        <div className="topbar-actions">
-          <button
-            className="icon-button"
-            type="button"
-            onClick={openDocument}
-            aria-label="Open Markdown file"
-            title="Open Markdown file"
-          >
-            <FolderOpen size={18} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={() => void closeDocument()}
-            disabled={closing}
-            aria-label="Close document"
-            title="Close document"
-          >
-            <X size={18} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={saveFile}
-            disabled={!saveEnabled}
-            aria-label="Save"
-            title="Save"
-          >
-            <Save size={18} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={downloadCopy}
-            aria-label="Download copy"
-            title="Download copy"
-          >
-            <Download size={18} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            ref={settingsTrigger}
-            onClick={() => setSettingsOpen((open) => !open)}
-            aria-label="Reading settings"
-            aria-expanded={settingsOpen}
-            title="Reading settings"
-          >
-            <Settings2 size={18} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={() => setCommandPaletteOpen(true)}
-            aria-label="Show command palette"
-            title="Show command palette (Cmd/Ctrl+K)"
-          >
-            <Command size={18} />
-          </button>
-        </div>
-        <input
-          ref={fileInput}
-          className="visually-hidden"
-          type="file"
-          accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
-          onChange={openFile}
-        />
-      </header>
-      <input
-        ref={collectionInput}
-        className="visually-hidden"
-        type="file"
-        multiple
-        accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
-        onChange={openCollection}
+      <WorkspaceHeader
+        documentName={documentName}
+        isDirty={isDirty}
+        closeDisabled={closing}
+        saveEnabled={saveEnabled}
+        settingsOpen={settingsOpen}
+        fileInput={fileInput}
+        collectionInput={collectionInput}
+        settingsTrigger={settingsTrigger}
+        onOpenDocument={openDocument}
+        onCloseDocument={() => void closeDocument()}
+        onSave={saveFile}
+        onDownloadCopy={downloadCopy}
+        onToggleSettings={() => setSettingsOpen((open) => !open)}
+        onShowCommandPalette={() => setCommandPaletteOpen(true)}
+        onFileChange={openFile}
+        onCollectionChange={openCollection}
       />
       {commandPaletteOpen && (
         <Suspense fallback={null}>
