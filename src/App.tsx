@@ -1,4 +1,4 @@
-import { updateWorkspaceSource } from "./core/workspace-source-actions";
+import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
 import { createReaderStatePayload } from "./core/reader-state-payload";
 import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
@@ -61,7 +61,6 @@ import {
 } from "./core/pagination";
 
 //Core commands and navigation
-import { changeHeadingLevel } from "./core/structural-commands";
 import {
   analyzeAccessibility,
   type FindingSeverity,
@@ -931,22 +930,15 @@ function DocumentWorkspace({
     });
   };
   const changeCurrentHeading = (direction: "promote" | "demote") => {
-    const edit = changeHeadingLevel(source, editorLine, direction);
-    if (!edit) return;
-    buffer.apply({
-      origin: "structural-command",
-      baseVersion: buffer.snapshot().version,
-      edits: [edit],
+    applyWorkspaceStructuralHeadingChange(direction, {
+      source,
+      editorLine,
+      buffer,
+      activeDocumentId,
+      setCollection,
+      setSource,
+      setIsDirty,
     });
-    setCollection((documents) =>
-      replaceCollectionDocument(
-        documents,
-        activeDocumentId,
-        buffer.snapshot().text,
-      ),
-    );
-    setSource(buffer.snapshot().text);
-    setIsDirty(true);
   };
   const goToSearchResult = (line: number, recordHistory = true) => {
     const heading =
