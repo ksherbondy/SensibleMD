@@ -1,3 +1,4 @@
+import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
 import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
 import { createReaderStatePayload } from "./core/reader-state-payload";
 import { useSplitSync } from "./core/use-split-sync";
@@ -686,55 +687,18 @@ function DocumentWorkspace({
   }, [commandPaletteOpen, settingsOpen, searchOpen]);
 
   const keyboardSave = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key.toLowerCase() === "s" && event.metaKey !== event.ctrlKey &&
-        !event.shiftKey && !event.altKey && !event.isComposing && !event.defaultPrevented
-      ) {
-        event.preventDefault();
-        if (!event.repeat) keyboardSave.current?.();
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "e") {
-        event.preventDefault();
-        setView((current) => (current === "read" ? "write" : "read"));
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen(true);
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setSearchOpen(true);
-        document.getElementById("document-search")?.focus();
-      }
-      if (view === "read" && event.altKey && event.key === "ArrowDown") {
-        event.preventDefault();
-        navigateHeading("next");
-      }
-      if (view === "read" && event.altKey && event.key === "ArrowUp") {
-        event.preventDefault();
-        navigateHeading("previous");
-      }
-      const target = event.target;
-      const editingTarget =
-        target instanceof Element &&
-        target.closest('input, textarea, [contenteditable="true"]');
-      if (view === "read" && readingMode !== "continuous" && !editingTarget) {
-        if (event.key === "ArrowRight") {
-          event.preventDefault();
-          turnPage("next");
-        }
-        if (event.key === "ArrowLeft") {
-          event.preventDefault();
-          turnPage("previous");
-        }
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeHeading, headings, readingMode, view]);
+  useWorkspaceKeyboard({
+    view,
+    readingMode,
+    activeHeading,
+    headings,
+    keyboardSave,
+    toggleView: () => setView((current) => (current === "read" ? "write" : "read")),
+    openPalette: () => setCommandPaletteOpen(true),
+    openSearch: () => setSearchOpen(true),
+    navigateHeading: (direction) => navigateHeading(direction),
+    turnPage: (direction) => turnPage(direction),
+  });
 
   const goToHeading = (
     heading: Heading,
