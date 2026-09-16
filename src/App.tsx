@@ -1,3 +1,4 @@
+import { createReaderStatePayload } from "./core/reader-state-payload";
 import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
 import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
@@ -567,20 +568,17 @@ function DocumentWorkspace({
     const saveState = window.sensibleMD?.saveDocumentState;
     if (closing || typeof saveState !== "function") return;
     const timer = window.setTimeout(() => {
-      const write = saveState({
+      const write = saveState(createReaderStatePayload({
         documentId: activeDocumentId,
         bookmarks,
         activeHeading,
-        position:
-          createSemanticPosition(
-            semanticDocument,
-            activeNodeId || activeHeading,
-          ) ?? undefined,
+        semanticDocument,
+        activeNodeId,
         fontScale,
         lineHeight,
         contentWidth,
         reducedMotion,
-      }).catch(() =>
+      })).catch(() =>
         setAppStatus(
           "Desktop settings could not be saved. Your document remains open.",
         ),
@@ -1413,20 +1411,17 @@ function DocumentWorkspace({
         buffer.snapshot().isDirty
       )
         return false;
-      await window.sensibleMD?.saveDocumentState?.({
+      await window.sensibleMD?.saveDocumentState?.(createReaderStatePayload({
         documentId: activeDocumentId,
         bookmarks,
         activeHeading,
-        position:
-          createSemanticPosition(
-            semanticDocument,
-            activeNodeId || activeHeading,
-          ) ?? undefined,
+        semanticDocument,
+        activeNodeId,
         fontScale,
         lineHeight,
         contentWidth,
         reducedMotion,
-      });
+      }));
       if (
         !isCurrent() ||
         buffer.snapshot().version !== version ||
