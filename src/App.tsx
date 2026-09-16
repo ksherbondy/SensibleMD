@@ -2,6 +2,7 @@ import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
 import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
 import { WorkspaceOutline } from "./components/workspace/WorkspaceOutline";
+import { WorkspaceSearch } from "./components/workspace/WorkspaceSearch";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
@@ -1799,81 +1800,25 @@ function DocumentWorkspace({
             </button>
           </div>
           {searchOpen && query && (
-            <section className="search-results" aria-label="Search results">
-              <header>
-                <span>
-                  {searchIndex >= 0
-                    ? `${searchIndex + 1} of ${searchResults.length} results`
-                    : `${matches} matches in ${searchResults.length} document blocks`}
-                </span>
-                <div role="group" aria-label="Search scope">
-                  <button
-                    type="button"
-                    className={searchScope === "document" ? "selected" : ""}
-                    onClick={() => {
-                      setSearchScope("document");
-                      setSearchIndex(-1);
-                      setSearchOrigin(null);
-                    }}
-                  >
-                    This file
-                  </button>
-                  <button
-                    type="button"
-                    className={searchScope === "collection" ? "selected" : ""}
-                    onClick={() => {
-                      setSearchScope("collection");
-                      setSearchIndex(-1);
-                      setSearchOrigin(null);
-                    }}
-                  >
-                    All chapters
-                  </button>
-                </div>
-              </header>
-              <div className="search-session-controls">
-                <button
-                  type="button"
-                  onClick={() => navigateSearchResults("previous")}
-                  disabled={!searchResults.length}
-                  aria-label="Previous search result"
-                >
-                  <ChevronLeft size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigateSearchResults("next")}
-                  disabled={!searchResults.length}
-                  aria-label="Next search result"
-                >
-                  <ChevronRight size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={returnToSearchOrigin}
-                  disabled={!searchOrigin}
-                >
-                  Return to origin
-                </button>
-              </div>
-              {searchResults.slice(0, 8).map((result, index) => (
-                <button
-                  type="button"
-                  key={`${result.documentId}-${result.nodeId}`}
-                  className={searchIndex === index ? "selected-result" : ""}
-                  onClick={() => {
-                    setSearchIndex(index);
-                    goToCollectionSearchResult(result);
-                  }}
-                >
-                  <strong>
-                    {result.documentName} · {result.section}
-                  </strong>
-                  <span>{result.text || result.section}</span>
-                  <small>Line {result.line}</small>
-                </button>
-              ))}
-            </section>
+            <WorkspaceSearch
+              searchScope={searchScope}
+              searchResults={searchResults}
+              searchIndex={searchIndex}
+              matches={matches}
+              hasOrigin={searchOrigin !== null}
+              onSelectScope={(scope) => {
+                setSearchScope(scope);
+                setSearchIndex(-1);
+                setSearchOrigin(null);
+              }}
+              onPrevious={() => navigateSearchResults("previous")}
+              onNext={() => navigateSearchResults("next")}
+              onReturnToOrigin={returnToSearchOrigin}
+              onSelectResult={(index) => {
+                setSearchIndex(index);
+                goToCollectionSearchResult(searchResults[index]);
+              }}
+            />
           )}
           {settingsOpen && (
             <section
