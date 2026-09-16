@@ -4,6 +4,7 @@ import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
 import { WorkspaceOutline } from "./components/workspace/WorkspaceOutline";
 import { WorkspaceSearch } from "./components/workspace/WorkspaceSearch";
 import { ReaderSettings } from "./components/workspace/ReaderSettings";
+import { DocumentNotices } from "./components/workspace/DocumentNotices";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
@@ -1834,41 +1835,14 @@ function DocumentWorkspace({
               onReducedMotionChange={setReducedMotion}
             />
           )}
-          {externalChange !== null && (
-            <section className="external-change-notice" role="alert">
-              <strong>This file changed outside SensibleMD.</strong>
-              <p>
-                Your unsaved edits are still intact. Choose which version to
-                keep.
-              </p>
-              <div>
-                <button type="button" onClick={() => setExternalChange(null)}>
-                  Keep editing
-                </button>
-                <button type="button" onClick={reloadExternalChange}>
-                  Reload from disk
-                </button>
-              </div>
-            </section>
-          )}
-          {recoverySnapshot !== null && (
-            <section className="recovery-notice" role="alert">
-              <strong>Unsaved changes are available.</strong>
-              <p>
-                A recovery snapshot from{" "}
-                {new Date(recoverySnapshot.savedAt).toLocaleString()} differs
-                from this document.
-              </p>
-              <div>
-                <button type="button" onClick={() => void discardRecovery()}>
-                  Discard recovery
-                </button>
-                <button type="button" onClick={restoreRecoverySnapshot}>
-                  Restore changes
-                </button>
-              </div>
-            </section>
-          )}
+          <DocumentNotices
+            hasExternalChange={externalChange !== null}
+            recoveryNotice={recoverySnapshot === null ? null : { savedAt: recoverySnapshot.savedAt }}
+            onKeepEditing={() => setExternalChange(null)}
+            onReload={reloadExternalChange}
+            onDiscard={() => void discardRecovery()}
+            onRestore={restoreRecoverySnapshot}
+          />
           {view === "read" && sectionSummaryOpen && (
             <section
               className="section-summary"
