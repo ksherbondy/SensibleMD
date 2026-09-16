@@ -3,6 +3,7 @@ import { AuthoringChecks } from "./components/AuthoringChecks";
 import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
 import { WorkspaceOutline } from "./components/workspace/WorkspaceOutline";
 import { WorkspaceSearch } from "./components/workspace/WorkspaceSearch";
+import { ReaderSettings } from "./components/workspace/ReaderSettings";
 import { useMeasuredPagination } from "./core/use-measured-pagination";
 import { useWindowClose } from "./core/use-window-close";
 import { NoDocument, type OpenedReaderDocument } from "./components/NoDocument";
@@ -1821,57 +1822,17 @@ function DocumentWorkspace({
             />
           )}
           {settingsOpen && (
-            <section
-              ref={settingsPanel}
-              className="settings-popover"
-              aria-label="Reading settings"
-            >
-              <label>
-                Text size <output>{preferences.fontScale}%</output>
-                <input
-                  type="range"
-                  min="85"
-                  max="150"
-                  value={preferences.fontScale}
-                  onChange={(event) => setFontScale(Number(event.target.value))}
-                />
-              </label>
-              <label>
-                Line spacing{" "}
-                <output>{preferences.lineHeight.toFixed(2)}</output>
-                <input
-                  type="range"
-                  min="1.3"
-                  max="2.4"
-                  step="0.05"
-                  value={preferences.lineHeight}
-                  onChange={(event) =>
-                    setLineHeight(Number(event.target.value))
-                  }
-                />
-              </label>
-              <label>
-                Content width <output>{preferences.contentWidth}px</output>
-                <input
-                  type="range"
-                  min="480"
-                  max="1040"
-                  step="20"
-                  value={preferences.contentWidth}
-                  onChange={(event) =>
-                    setContentWidth(Number(event.target.value))
-                  }
-                />
-              </label>
-              <label className="toggle-setting">
-                <input
-                  type="checkbox"
-                  checked={preferences.reducedMotion}
-                  onChange={(event) => setReducedMotion(event.target.checked)}
-                />{" "}
-                Reduce motion
-              </label>
-            </section>
+            <ReaderSettings
+              fontScale={preferences.fontScale}
+              lineHeight={preferences.lineHeight}
+              contentWidth={preferences.contentWidth}
+              reducedMotion={preferences.reducedMotion}
+              panelRef={settingsPanel}
+              onFontScaleChange={setFontScale}
+              onLineHeightChange={setLineHeight}
+              onContentWidthChange={setContentWidth}
+              onReducedMotionChange={setReducedMotion}
+            />
           )}
           {externalChange !== null && (
             <section className="external-change-notice" role="alert">
