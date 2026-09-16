@@ -1,5 +1,15 @@
 import type { ChangeEventHandler, RefObject } from "react";
-import { BookOpen, Check, Command, Download, FileText, FolderOpen, Save, Settings2, X } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Command,
+  Download,
+  FileText,
+  FolderOpen,
+  Save,
+  Settings2,
+  X,
+} from "lucide-react";
 
 interface WorkspaceHeaderProps {
   documentName: string;

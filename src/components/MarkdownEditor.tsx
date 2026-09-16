@@ -124,15 +124,28 @@ export function MarkdownEditor({
     registerScrollAdapter?.({
       scrollDOM: editor.scrollDOM,
       source: () => currentSource.current,
-      offsetAtAnchor: () => editor.lineBlockAtHeight(
-        editor.scrollDOM.getBoundingClientRect().top + editor.scrollDOM.clientHeight * SPLIT_ANCHOR - editor.documentTop,
-      ).from,
-      reveal: (offset) => editor.dispatch({ effects: EditorView.scrollIntoView(
-        Math.max(0, Math.min(offset, editor.state.doc.length)),
-        { y: "start", yMargin: editor.scrollDOM.clientHeight * SPLIT_ANCHOR },
-      ) }),
+      offsetAtAnchor: () =>
+        editor.lineBlockAtHeight(
+          editor.scrollDOM.getBoundingClientRect().top +
+            editor.scrollDOM.clientHeight * SPLIT_ANCHOR -
+            editor.documentTop,
+        ).from,
+      reveal: (offset) =>
+        editor.dispatch({
+          effects: EditorView.scrollIntoView(
+            Math.max(0, Math.min(offset, editor.state.doc.length)),
+            {
+              y: "start",
+              yMargin: editor.scrollDOM.clientHeight * SPLIT_ANCHOR,
+            },
+          ),
+        }),
     });
-    return () => { registerScrollAdapter?.(null); editor.destroy(); view.current = null; };
+    return () => {
+      registerScrollAdapter?.(null);
+      editor.destroy();
+      view.current = null;
+    };
   }, []);
 
   useEffect(() => {
