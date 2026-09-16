@@ -105,7 +105,7 @@ describe('persisted recovery deletion', () => {
       await s.save()
       expect(s.isDirty()).toBe(false)
       expect(desktop.recoveryLatest.has(id)).toBe(true)
-      expect(s.status()).toContain('Saved, but recovery data could not be cleared')
+      expect(s.status()).toBe('Saved, but recovery data could not be cleared. It may appear again when you reopen the document.')
     } finally { s.unmount() }
   })
 

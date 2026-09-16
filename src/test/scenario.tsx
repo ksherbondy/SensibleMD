@@ -11,6 +11,7 @@ type DocumentMode = "Read" | "Write" | "Split";
 
 export interface ScenarioOptions {
   home?: boolean;
+  strictMode?: boolean;
   desktop?: FakeDesktop;
   /** Seed browser storage before the application reads it during mount. */
   storage?: Record<string, string>;
@@ -104,6 +105,7 @@ export async function startScenario(
             }
       }
     />,
+    { reactStrictMode: options.strictMode },
   );
   const settle = async () => {
     await act(async () => {
