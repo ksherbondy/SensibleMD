@@ -1,3 +1,4 @@
+import { updateWorkspaceSource } from "./core/workspace-source-actions";
 import { createReaderStatePayload } from "./core/reader-state-payload";
 import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
@@ -921,13 +922,13 @@ function DocumentWorkspace({
     return true;
   };
   const updateSource = (nextSource: string) => {
-    if (nextSource === buffer.snapshot().text) return;
-    buffer.replace(nextSource, "editor");
-    setCollection((documents) =>
-      replaceCollectionDocument(documents, activeDocumentId, nextSource),
-    );
-    setSource(nextSource);
-    setIsDirty(true);
+    updateWorkspaceSource(nextSource, {
+      buffer,
+      activeDocumentId,
+      setCollection,
+      setSource,
+      setIsDirty,
+    });
   };
   const changeCurrentHeading = (direction: "promote" | "demote") => {
     const edit = changeHeadingLevel(source, editorLine, direction);
