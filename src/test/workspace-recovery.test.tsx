@@ -9,6 +9,47 @@ const snapshot = (documentId: string, source: string): Snapshot => ({ documentId
 const notice = () => document.querySelector('.recovery-notice');
 const id = () => document.querySelector('.app-shell')!.getAttribute('data-document-id')!;
 
+it('does not retain A recovery notice after activating B without recovery', async () => {
+  const desktop = new FakeDesktop().addFile('/A.md', '# Disk A').addFile('/B.md', '# Disk B');
+  const a = desktop.documentIdFor('/A.md');
+  desktop.recoveryLatest.set(a, snapshot(a, '# Recovered A')!);
+  const s = await startScenario({ desktop, home: true });
+  try {
+    desktop.openDialogResult = '/A.md'; await s.openDocument();
+    expect(notice()).not.toBeNull();
+    desktop.openDialogResult = '/B.md'; await s.openDocument();
+    expect(id()).toBe(desktop.documentIdFor('/B.md'));
+    expect(localStorage.getItem('sensiblemd-document')).toBe('# Disk B');
+    expect(notice()).toBeNull();
+  } finally { s.unmount(); }
+});
+
+it('removes A notice while B loads and permits only the valid B recovery to be restored', async () => {
+  const desktop = new FakeDesktop().addFile('/A.md', '# Disk A').addFile('/B.md', '# Disk B');
+  const a = desktop.documentIdFor('/A.md');
+  const b = desktop.documentIdFor('/B.md');
+  desktop.recoveryLatest.set(a, snapshot(a, '# Recovered A')!);
+  const s = await startScenario({ desktop, home: true });
+  const held = deferred<Snapshot>();
+  try {
+    desktop.openDialogResult = '/A.md'; await s.openDocument();
+    expect(notice()).not.toBeNull();
+    const load = vi.spyOn(desktop.api, 'loadRecoverySnapshot').mockReturnValueOnce(held.promise);
+    try {
+      desktop.openDialogResult = '/B.md'; await s.openDocument();
+      expect(load).toHaveBeenCalledExactlyOnceWith(b);
+      expect(notice()).toBeNull();
+      await act(async () => held.resolve(snapshot(b, '# Recovered B')));
+      expect(notice()).not.toBeNull();
+      await s.restoreRecovery();
+      expect(id()).toBe(b);
+      expect(localStorage.getItem('sensiblemd-document')).toBe('# Recovered B');
+      expect(s.isDirty()).toBe(true);
+      expect(notice()).toBeNull();
+    } finally { load.mockRestore(); }
+  } finally { s.unmount(); }
+});
+
 it.each([false, true])('compares recovery with live buffer text at completion (edit during load: %s)', async edit => {
   const desktop = new FakeDesktop();
   const held = deferred<Snapshot>();

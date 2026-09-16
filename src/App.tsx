@@ -286,13 +286,14 @@ function DocumentWorkspace({
   const [appStatus, setAppStatus] = useState("");
   const windowDiscard = useRef<{ documentId: string; version: number } | null>(null);
   const recoveryContext = useRef({ documentId: activeDocumentId, revision: 0 });
-  useLayoutEffect(() => {
-    recoveryContext.current = { documentId: activeDocumentId, revision: 0 };
-  }, [activeDocumentId]);
   const [recoverySnapshot, setRecoverySnapshot] = useState<{
     source: string;
     savedAt: string;
   } | null>(null);
+  useLayoutEffect(() => {
+    recoveryContext.current = { documentId: activeDocumentId, revision: 0 };
+    setRecoverySnapshot(null);
+  }, [activeDocumentId]);
   const [recentDocuments, setRecentDocuments] = useState<
     Array<{ index: number; name: string }>
   >([]);
