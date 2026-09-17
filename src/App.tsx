@@ -1,4 +1,4 @@
-import { useWorkspaceRecovery, useWorkspaceRecoveryLoad } from "./core/use-workspace-recovery";
+import { useWorkspaceRecovery, useWorkspaceRecoveryLoad, useWorkspaceRecoveryWrite } from "./core/use-workspace-recovery";
 import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
 import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
 import { createReaderStatePayload } from "./core/reader-state-payload";
@@ -20,6 +20,7 @@ import { useReadingObservation } from "./core/use-reading-observation";
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -595,24 +596,15 @@ function DocumentWorkspace({
     closing,
   ]);
 
-  useEffect(() => {
-    const saveRecoverySnapshot = window.sensibleMD?.saveRecoverySnapshot;
-    if (!isDirty || typeof saveRecoverySnapshot !== "function") return;
-    const snapshot = buffer.snapshot();
-    const timer = window.setTimeout(() => {
-      if (windowDiscard.current?.documentId === activeDocumentId && windowDiscard.current.version === snapshot.version) return;
-      void saveRecoverySnapshot({
-        documentId: activeDocumentId,
-        version: snapshot.version,
-        source: snapshot.text,
-      }).catch(() =>
-        setAppStatus(
-          "Recovery snapshot could not be saved. Your document remains open.",
-        ),
-      );
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, [activeDocumentId, buffer, isDirty, source]);
+  const readRecoverySnapshot = useCallback(() => buffer.snapshot(), [buffer]);
+  useWorkspaceRecoveryWrite({
+    activeDocumentId,
+    isDirty,
+    source,
+    readRecoverySnapshot,
+    windowDiscard,
+    setAppStatus,
+  });
 
   useWorkspaceRecoveryLoad({
     activeDocumentId,

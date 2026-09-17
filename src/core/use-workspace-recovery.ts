@@ -69,3 +69,36 @@ export function useWorkspaceRecoveryLoad({
   }, [activeDocumentId]);
 
 }
+
+interface RecoveryWriteInputs extends RecoveryInputs {
+  isDirty: boolean;
+  source: string;
+  readRecoverySnapshot: () => { text: string; version: number };
+  windowDiscard: RefObject<{ documentId: string; version: number } | null>;
+}
+
+// Register at the former write effect location. The reader identity tracks only
+// the workspace buffer; source remains the explicit edit-driven dependency.
+export function useWorkspaceRecoveryWrite({
+  activeDocumentId, isDirty, source, readRecoverySnapshot, windowDiscard, setAppStatus,
+}: RecoveryWriteInputs): void {
+  useEffect(() => {
+    const saveRecoverySnapshot = window.sensibleMD?.saveRecoverySnapshot;
+    if (!isDirty || typeof saveRecoverySnapshot !== "function") return;
+    const snapshot = readRecoverySnapshot();
+    const timer = window.setTimeout(() => {
+      if (windowDiscard.current?.documentId === activeDocumentId && windowDiscard.current.version === snapshot.version) return;
+      void saveRecoverySnapshot({
+        documentId: activeDocumentId,
+        version: snapshot.version,
+        source: snapshot.text,
+      }).catch(() =>
+        setAppStatus(
+          "Recovery snapshot could not be saved. Your document remains open.",
+        ),
+      );
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [activeDocumentId, readRecoverySnapshot, isDirty, source, windowDiscard, setAppStatus]);
+
+}
