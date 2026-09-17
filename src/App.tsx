@@ -1,3 +1,4 @@
+import { useWorkspaceRecovery, useWorkspaceRecoveryLoad } from "./core/use-workspace-recovery";
 import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
 import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
 import { createReaderStatePayload } from "./core/reader-state-payload";
@@ -285,15 +286,7 @@ function DocumentWorkspace({
   const [copyStatus, setCopyStatus] = useState("");
   const [appStatus, setAppStatus] = useState("");
   const windowDiscard = useRef<{ documentId: string; version: number } | null>(null);
-  const recoveryContext = useRef({ documentId: activeDocumentId, revision: 0 });
-  const [recoverySnapshot, setRecoverySnapshot] = useState<{
-    source: string;
-    savedAt: string;
-  } | null>(null);
-  useLayoutEffect(() => {
-    recoveryContext.current = { documentId: activeDocumentId, revision: 0 };
-    setRecoverySnapshot(null);
-  }, [activeDocumentId]);
+  const { recoveryContext, recoverySnapshot, setRecoverySnapshot, clearRecovery, clearSavedRecovery, discardRecovery } = useWorkspaceRecovery({ activeDocumentId, setAppStatus });
   const [recentDocuments, setRecentDocuments] = useState<
     Array<{ index: number; name: string }>
   >([]);
@@ -621,20 +614,13 @@ function DocumentWorkspace({
     return () => window.clearTimeout(timer);
   }, [activeDocumentId, buffer, isDirty, source]);
 
-  useEffect(() => {
-    const loadRecoverySnapshot = window.sensibleMD?.loadRecoverySnapshot;
-    if (typeof loadRecoverySnapshot !== "function") return;
-    const context = recoveryContext.current;
-    const revision = context.revision;
-    let current = true;
-    void loadRecoverySnapshot(activeDocumentId)
-      .then((snapshot) => {
-        if (current && recoveryContext.current === context && context.revision === revision && snapshot?.source && snapshot.source !== buffer.snapshot().text)
-          setRecoverySnapshot(snapshot);
-      })
-      .catch(() => { if (current) setAppStatus("Recovery check is temporarily unavailable."); });
-    return () => { current = false; };
-  }, [activeDocumentId]);
+  useWorkspaceRecoveryLoad({
+    activeDocumentId,
+    recoveryContext,
+    setRecoverySnapshot,
+    readCurrentSource: () => buffer.snapshot().text,
+    setAppStatus,
+  });
 
   useEffect(() => {
     const subscribe = window.sensibleMD?.onExternalDocumentChange;
@@ -1202,27 +1188,6 @@ function DocumentWorkspace({
     setNavigationNode("");
     setView("read");
     refreshRecentDocuments();
-  };
-  const clearRecovery = async (documentId: string) => {
-    const context = recoveryContext.current;
-    const revision = context.documentId === documentId ? ++context.revision : context.revision;
-    if (!window.sensibleMD?.clearRecoverySnapshot) throw new Error("Recovery clearing unavailable");
-    await window.sensibleMD.clearRecoverySnapshot(documentId);
-    if (recoveryContext.current === context && context.documentId === documentId && context.revision === revision) setRecoverySnapshot(null);
-  };
-  const clearSavedRecovery = async (documentId: string) => {
-    try {
-      await clearRecovery(documentId);
-    } catch {
-      setAppStatus("Saved, but recovery data could not be cleared. It may appear again when you reopen the document.");
-    }
-  };
-  const discardRecovery = async () => {
-    try {
-      await clearRecovery(activeDocumentId);
-    } catch {
-      setAppStatus("Recovery could not be discarded. Please try again.");
-    }
   };
   const saveUnavailable =
     !(canSaveDirectly && typeof window.sensibleMD?.saveOpenedDocument === "function") &&
