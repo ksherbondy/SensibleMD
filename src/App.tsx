@@ -1,3 +1,4 @@
+import { saveWorkspaceDocumentDirectly } from "./core/workspace-save-actions";
 import { useWorkspaceRecovery, useWorkspaceRecoveryLoad, useWorkspaceRecoveryWrite } from "./core/use-workspace-recovery";
 import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
 import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
@@ -1191,24 +1192,17 @@ function DocumentWorkspace({
     const saveOpenedDocument = window.sensibleMD?.saveOpenedDocument;
     if (canSaveDirectly && typeof saveOpenedDocument === "function") {
       trackSave(
-        saveOpenedDocument({ source })
-          .then(async () => {
-            if (buffer.snapshot().version !== savedVersion) {
-              setAppStatus(
-                "Saved the earlier version. Newer changes remain open.",
-              );
-              return;
-            }
-            buffer.markSaved();
-            setIsDirty(false);
-            setAppStatus("Saved.");
-            await clearSavedRecovery(savedDocumentId);
-          })
-          .catch(() =>
-            setAppStatus(
-              "The file could not be saved. Your edits are still open.",
-            ),
-          ),
+        saveWorkspaceDocumentDirectly({
+          savedDocumentId,
+          savedVersion,
+          source,
+          saveOpenedDocument,
+          readCurrentVersion: () => buffer.snapshot().version,
+          markSaved: () => buffer.markSaved(),
+          setIsDirty,
+          setAppStatus,
+          clearSavedRecovery,
+        }),
       );
       return;
     }
