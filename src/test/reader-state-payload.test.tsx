@@ -74,7 +74,7 @@ it('includes an own undefined position for an empty model and preserves raw out-
   } finally { save.mockRestore(); s.unmount(); }
 });
 
-it('debounces before hydration is ready, then preserves independent location and preference hydration in the final payload', async () => {
+it('waits for hydration, then preserves independent location and preference hydration in the final payload', async () => {
   const desktop = new FakeDesktop();
   const pending = deferred<SensibleDocumentState | null>();
   const load = vi.spyOn(desktop.api, 'loadDocumentState').mockImplementationOnce(() => pending.promise);
@@ -83,7 +83,8 @@ it('debounces before hydration is ready, then preserves independent location and
   try {
     await s.clickOutlineHeading('Second');
     await s.user.click(screen.getByRole('button', { name: 'Bookmark' }));
-    await waitFor(() => expect(save.mock.lastCall?.[0]).toMatchObject({ activeHeading: second, bookmarks: [second] }), { timeout: 1500 });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
+    expect(save).not.toHaveBeenCalled();
     const before = save.mock.calls.length;
     await close(s.user);
     expect(s.status()).toBe('Reader state is still loading. Try closing again when it finishes.');
