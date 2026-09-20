@@ -1,6 +1,6 @@
 # Step 16 reader metadata characterization — hydration gate conflict
 
-Current status: separate hydration repair `f330461` is complete and awaits review; see [repair verification](reader-metadata-hydration-repair-verification.md). Step 16 extraction remains paused and Step 17 remains unauthorized.
+Current status: hydration repair `f330461` is accepted and the remaining Step 16 characterization gate is complete in `83325f8`: 110 targeted passes, 378 full-suite passes (70 TODO), build/diff check PASS, 30 unchanged lint warnings, and packaged metadata restoration plus save/close PASS. See [completed characterization report](reader-metadata-characterization-verification.md). Step 16 extraction remains paused pending explicit authorization; Step 17 remains unauthorized.
 
 The following is the historical pre-repair stop report for characterization `4deba49`; production was unchanged from `690d248` when this evidence was recorded.
 
