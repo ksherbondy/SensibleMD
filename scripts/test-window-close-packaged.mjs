@@ -129,6 +129,31 @@ try {
   await evaluate(`smokeElectron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [${JSON.stringify(file)}] }); globalThis.dialogCount = 0; globalThis.dialogResponse = 2; smokeElectron.dialog.showMessageBox = async () => { dialogCount++; return { response: dialogResponse }; };`);
   await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Open Markdown')).click()`);
   await until(async () => (await renderer('document.body.innerText')).includes('Original'));
+  // Reader metadata gate: real debounce/native persistence, then a fresh workspace
+  // with browser storage cleared so it cannot stand in for native restoration.
+  await renderer(`document.querySelector('.outline-item').click()`);
+  await until(() => renderer(`!document.querySelector('.bookmark-button').disabled`));
+  await renderer(`document.querySelector('.bookmark-button').click(); document.querySelector('[aria-label="Reading settings"]').click()`);
+  await until(() => renderer(`document.querySelectorAll('.settings-popover input[type=range]').length === 3`));
+  await renderer(`(() => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const sliders = document.querySelectorAll('.settings-popover input[type=range]'); ['135', '2.05', '880'].forEach((value, i) => { set.call(sliders[i], value); sliders[i].dispatchEvent(new Event('input', {bubbles:true})); sliders[i].dispatchEvent(new Event('change', {bubbles:true})); }); document.querySelector('.settings-popover input[type=checkbox]').click(); })()`);
+  const readerId = await renderer(`document.querySelector('.app-shell').dataset.documentId`);
+  const metadataPath = path.join(profile, 'documents', readerId + '.json');
+  await until(async () => {
+    try { const state = JSON.parse(await readFile(metadataPath, 'utf8')); return state.fontScale === 135 && state.lineHeight === 2.05 && state.contentWidth === 880 && state.reducedMotion && state.bookmarks.length === 1 && !!state.position; }
+    catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  });
+  const persistedReader = JSON.parse(await readFile(metadataPath, 'utf8'));
+  assert.equal(persistedReader.documentId, readerId);
+  assert.equal(persistedReader.position.nodeId, persistedReader.activeHeading);
+  assert.deepEqual(persistedReader.bookmarks, [persistedReader.activeHeading]);
+  await renderer(`document.querySelector('[aria-label="Close document"]').click()`);
+  await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
+  await renderer(`localStorage.clear(); Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Open Markdown')).click()`);
+  await until(() => renderer(`document.querySelector('.app-shell')?.style.getPropertyValue('--reader-scale') === '135%'`));
+  assert.deepEqual(await renderer(`(() => { const shell = document.querySelector('.app-shell'); return { id: shell.dataset.documentId, scale: shell.style.getPropertyValue('--reader-scale'), line: shell.style.getPropertyValue('--reader-line-height'), width: shell.style.getPropertyValue('--reader-width'), motion: shell.classList.contains('reduced-motion'), heading: document.querySelector('.outline-item[aria-current="location"]')?.textContent, bookmarked: document.querySelector('.bookmark-button').classList.contains('saved-bookmark') }; })()`), {
+    id: readerId, scale: '135%', line: '2.05', width: '880px', motion: true, heading: 'Original', bookmarked: true,
+  });
+  console.log('PASS packaged reader metadata debounce persists settings/bookmark/position and restores after Close Document/reopen without browser storage');
   assert.deepEqual(await renderer(`Array.from(document.querySelectorAll('.topbar-actions button')).filter(b => ['Save', 'Download copy'].includes(b.getAttribute('aria-label'))).map(b => ({label: b.getAttribute('aria-label'), title: b.title, disabled: b.disabled, saveIcon: !!b.querySelector('.lucide-save'), downloadIcon: !!b.querySelector('.lucide-download')}))`), [
     {label: 'Save', title: 'Save', disabled: true, saveIcon: true, downloadIcon: false},
     {label: 'Download copy', title: 'Download copy', disabled: false, saveIcon: false, downloadIcon: true},
