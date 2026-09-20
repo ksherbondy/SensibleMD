@@ -1,6 +1,8 @@
 # Step 15 Save As characterization — existing defect blocks extraction
 
-Status: **STOPPED before production extraction** under the explicit existing-bug stop condition. Characterization commit: `3e3bfb0`. No extraction commit exists. Step 16 has not begun.
+Current status: **Step 15 extraction remains paused pending repair review**. Separate ownership repair `0680730` now passes all renderer checks; see [repair verification](save-as-ownership-repair-verification.md). The sections below preserve the historical pre-repair defect and failing-test evidence.
+
+Historical extraction status: **STOPPED before production extraction** under the explicit existing-bug stop condition. Characterization commit: `3e3bfb0`. No extraction commit exists. Step 16 has not begun.
 
 Accepted production baseline remains Step 14 `5e9f5f9` (report `31f4022`). No production source was changed, no extraction experiment was attempted, and no repair was made. The accepted direct-save action remains untouched.
 
