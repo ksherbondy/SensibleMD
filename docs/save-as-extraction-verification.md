@@ -1,6 +1,8 @@
 # Step 15 Save As characterization — existing defect blocks extraction
 
-Current status: **Step 15 extraction remains paused pending repair review**. Separate ownership repair `0680730` now passes all renderer checks; see [repair verification](save-as-ownership-repair-verification.md). The sections below preserve the historical pre-repair defect and failing-test evidence.
+Current status: **Step 15 characterization gate is complete; extraction still awaits explicit authorization.** New characterization commit `149c0e5` verifies the accepted repair with 93 targeted passes, 350 full-suite passes (70 TODO), build/diff check PASS, 30 unchanged lint warnings, and packaged macOS Save As/close PASS. See [completed characterization report](save-as-characterization-verification.md). No Save As extraction has begun. Step 16 remains unauthorized.
+
+The sections below preserve the historical pre-repair defect and failing-test evidence. Separate ownership repair `0680730` was accepted; see [repair verification](save-as-ownership-repair-verification.md).
 
 Historical extraction status: **STOPPED before production extraction** under the explicit existing-bug stop condition. Characterization commit: `3e3bfb0`. No extraction commit exists. Step 16 has not begun.
 
