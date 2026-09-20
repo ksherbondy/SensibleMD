@@ -32,12 +32,12 @@ it.each([false, true])('held Save As for A must not adopt its identity over subs
     // B's source survives, but all ownership must remain attached to B as well.
     expect(s.editorSource()).toBe('# B newer edits');
     expect(s.isDirty()).toBe(true);
-    expect(s.chapterNames()).toEqual(['SavedA.md', 'B.md']);
+    expect(s.chapterNames()).toEqual(['A.md', 'B.md']);
     expect.soft(document.querySelector('.app-shell')).toHaveAttribute('data-document-id', bId);
     expect.soft(document.querySelector('.app-shell')).toHaveAttribute('data-session-id', bSession);
     expect.soft(s.documentName()).toBe('B.md');
     await s.switchChapter('B.md');
-    await s.switchChapter('SavedA.md');
+    await s.switchChapter('A.md');
     // The saved A collection entry must not have been replaced with B's text.
     expect.soft(localStorage.getItem('sensiblemd-document')).toBe('# A');
   } finally { s.unmount(); saveAs.mockRestore(); }
