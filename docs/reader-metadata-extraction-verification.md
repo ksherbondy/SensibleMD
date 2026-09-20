@@ -1,6 +1,8 @@
 # Step 16 reader metadata characterization — hydration gate conflict
 
-Status: **STOPPED before extraction**. Step 17 has not begun and remains unauthorized. Production remains byte-for-byte unchanged from accepted Step 15 `690d248`.
+Current status: separate hydration repair `f330461` is complete and awaits review; see [repair verification](reader-metadata-hydration-repair-verification.md). Step 16 extraction remains paused and Step 17 remains unauthorized.
+
+The following is the historical pre-repair stop report for characterization `4deba49`; production was unchanged from `690d248` when this evidence was recorded.
 
 ## Blocking observation
 
