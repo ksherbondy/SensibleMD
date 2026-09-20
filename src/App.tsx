@@ -1,4 +1,4 @@
-import { saveWorkspaceDocumentDirectly } from "./core/workspace-save-actions";
+import { saveWorkspaceDocumentAs, saveWorkspaceDocumentDirectly } from "./core/workspace-save-actions";
 import { useWorkspaceRecovery, useWorkspaceRecoveryLoad, useWorkspaceRecoveryWrite } from "./core/use-workspace-recovery";
 import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
 import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
@@ -1227,36 +1227,26 @@ function DocumentWorkspace({
       const ownsActivation = () => saveAsOwnership.current.mounted &&
         saveAsOwnership.current.generation === generation;
       trackSave(
-        saveNativeDocument({ name: documentName, source })
-          .then(async (file) => {
-            // The file may already be saved; stale results cannot adopt renderer
-            // identity or clear recovery belonging to a departed activation.
-            if (!file || !ownsActivation()) return;
-            const newId = asDocumentId(file.documentId);
-            const current = buffer.snapshot();
-            const clean = current.version === savedVersion;
-            setCollection((documents) => documents
-              .filter((document) => document.id !== newId || document.id === savedDocumentId)
-              .map((document) => document.id === savedDocumentId
-                ? { ...document, id: newId, name: file.name, source: current.text }
-                : document));
-            setActiveDocumentId(newId);
-            setActiveSessionId(asSessionId(file.sessionId));
-            setCanSaveDirectly(true);
-            setDocumentName(file.name);
-            if (clean) buffer.markSaved();
-            setIsDirty(!clean);
-            setRecoverySnapshot(null);
-            refreshRecentDocuments();
-            setAppStatus(clean ? "Saved." : "Saved the earlier version. Newer changes remain open.");
-            // The normal debounce writes recovery under newId only when dirty.
-            await clearSavedRecovery(savedDocumentId);
-          })
-          .catch(() => {
-            if (ownsActivation()) setAppStatus(
-              "The file could not be saved. Your edits are still open.",
-            );
-          }),
+        saveWorkspaceDocumentAs({
+          savedDocumentId,
+          savedVersion,
+          documentName,
+          source,
+          saveNativeDocument,
+          ownsActivation,
+          readCurrentSnapshot: () => buffer.snapshot(),
+          setCollection,
+          setActiveDocumentId,
+          setActiveSessionId,
+          setCanSaveDirectly,
+          setDocumentName,
+          markSaved: () => buffer.markSaved(),
+          setIsDirty,
+          clearRecoveryNotice: () => setRecoverySnapshot(null),
+          refreshRecentDocuments,
+          setAppStatus,
+          clearSavedRecovery,
+        }),
       );
       return;
     }
