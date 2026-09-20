@@ -578,7 +578,7 @@ function DocumentWorkspace({
 
   useEffect(() => {
     const saveState = window.sensibleMD?.saveDocumentState;
-    if (closing || typeof saveState !== "function") return;
+    if (!readerStateReady || closing || typeof saveState !== "function") return;
     const timer = window.setTimeout(() => {
       const write = saveState(createReaderStatePayload({
         documentId: activeDocumentId,
@@ -610,6 +610,7 @@ function DocumentWorkspace({
     reducedMotion,
     source,
     closing,
+    readerStateReady,
   ]);
 
   const readRecoverySnapshot = useCallback(() => buffer.snapshot(), [buffer]);
