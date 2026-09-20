@@ -202,9 +202,24 @@ function DocumentWorkspace({
   );
   const [collection, setCollection] =
     useState<CollectionDocument[]>(initialCollection);
-  const [activeDocumentId, setActiveDocumentId] = useState<DocumentId>(
+  const [activeDocumentId, commitActiveDocumentId] = useState<DocumentId>(
     () => initialCollection()[0].id,
   );
+  // Save As owns one renderer activation lifetime, independently of edits.
+  const saveAsOwnership = useRef({ generation: 0, mounted: false });
+  const setActiveDocumentId = (documentId: DocumentId) => {
+    // Invalidate synchronously, including same-ID reopen and batched A→B→A.
+    saveAsOwnership.current.generation += 1;
+    commitActiveDocumentId(documentId);
+  };
+  useLayoutEffect(() => {
+    const ownership = saveAsOwnership.current;
+    ownership.mounted = true;
+    return () => {
+      ownership.mounted = false;
+      ownership.generation += 1;
+    };
+  }, []);
   const [activeSessionId, setActiveSessionId] = useState<SessionId | null>(
     initialDocument?.sessionId ?? null,
   );
@@ -1208,10 +1223,15 @@ function DocumentWorkspace({
     }
     const saveNativeDocument = window.sensibleMD?.saveDocumentAs;
     if (typeof saveNativeDocument === "function") {
+      const generation = saveAsOwnership.current.generation;
+      const ownsActivation = () => saveAsOwnership.current.mounted &&
+        saveAsOwnership.current.generation === generation;
       trackSave(
         saveNativeDocument({ name: documentName, source })
           .then(async (file) => {
-            if (!file) return;
+            // The file may already be saved; stale results cannot adopt renderer
+            // identity or clear recovery belonging to a departed activation.
+            if (!file || !ownsActivation()) return;
             const newId = asDocumentId(file.documentId);
             const current = buffer.snapshot();
             const clean = current.version === savedVersion;
@@ -1232,11 +1252,11 @@ function DocumentWorkspace({
             // The normal debounce writes recovery under newId only when dirty.
             await clearSavedRecovery(savedDocumentId);
           })
-          .catch(() =>
-            setAppStatus(
+          .catch(() => {
+            if (ownsActivation()) setAppStatus(
               "The file could not be saved. Your edits are still open.",
-            ),
-          ),
+            );
+          }),
       );
       return;
     }
