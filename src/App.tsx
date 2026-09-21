@@ -3,7 +3,7 @@ import { saveWorkspaceDocumentAs, saveWorkspaceDocumentDirectly } from "./core/w
 import { useWorkspaceRecovery, useWorkspaceRecoveryLoad, useWorkspaceRecoveryWrite } from "./core/use-workspace-recovery";
 import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
 import { updateWorkspaceSource, applyWorkspaceStructuralHeadingChange } from "./core/workspace-source-actions";
-import { createReaderStatePayload } from "./core/reader-state-payload";
+import { closeWorkspaceDocument } from "./core/workspace-close-action";
 import { useSplitSync } from "./core/use-split-sync";
 import { AuthoringChecks } from "./components/AuthoringChecks";
 import { WorkspaceHeader } from "./components/workspace/WorkspaceHeader";
@@ -1279,68 +1279,28 @@ function DocumentWorkspace({
     },
     status: setAppStatus,
   });
-  const closeDocument = async (completed = onClose): Promise<boolean> => {
-    if (isDirty || buffer.snapshot().isDirty) {
-      setAppStatus("Save your changes before closing this document.");
-      return false;
-    }
-    if (pendingSaves.current.size) {
-      setAppStatus(
-        "A save is still in progress. Close the document when it finishes.",
-      );
-      return false;
-    }
-    if (!readerStateReady) {
-      setAppStatus(
-        "Reader state is still loading. Try closing again when it finishes.",
-      );
-      return false;
-    }
-    if (closingRef.current) return false;
-    closingRef.current = true;
-    setClosing(true);
-    const isCurrent = navigationWork.capture();
-    const version = buffer.snapshot().version;
-    try {
-      // Drain earlier reader writes before flushing the final position. Closing
-      // unmounts the workspace, cancelling its timers/listeners without writing
-      // an empty document over reader memory or recovery snapshots.
-      await Promise.allSettled([...pendingReaderWrites.current]);
-      if (
-        !isCurrent() ||
-        buffer.snapshot().version !== version ||
-        buffer.snapshot().isDirty
-      )
-        return false;
-      await window.sensibleMD?.saveDocumentState?.(createReaderStatePayload({
-        documentId: activeDocumentId,
-        bookmarks,
-        activeHeading,
-        semanticDocument,
-        activeNodeId,
-        fontScale,
-        lineHeight,
-        contentWidth,
-        reducedMotion,
-      }));
-      if (
-        !isCurrent() ||
-        buffer.snapshot().version !== version ||
-        buffer.snapshot().isDirty
-      )
-        return false;
-      completed();
-      return true;
-    } catch {
-      setAppStatus(
-        "Reader state could not be saved. The document is still open.",
-      );
-      return false;
-    } finally {
-      closingRef.current = false;
-      setClosing(false);
-    }
-  };
+  const closeDocument = (completed = onClose): Promise<boolean> =>
+    closeWorkspaceDocument({
+      activeDocumentId,
+      isDirty,
+      readerStateReady,
+      readCurrentSnapshot: () => buffer.snapshot(),
+      captureNavigation: () => navigationWork.capture(),
+      pendingSaves,
+      pendingReaderWrites,
+      closingRef,
+      setClosing,
+      setAppStatus,
+      completed,
+      bookmarks,
+      activeHeading,
+      semanticDocument,
+      activeNodeId,
+      fontScale,
+      lineHeight,
+      contentWidth,
+      reducedMotion,
+    });
   useImperativeHandle(prepareOpen, () => () => closeDocument(() => {}));
   const reloadExternalChange = () => {
     if (externalChange === null) return;
