@@ -40,8 +40,10 @@ interface Window {
       index: number,
     ) => Promise<SensibleOpenedDocument | null>;
     saveOpenedDocument: (payload: {
+      documentId: string;
+      sessionId: string;
       source: string;
-    }) => Promise<{ name: string }>;
+    }) => Promise<{ name: string } | { error: "binding-mismatch" }>;
     onExternalDocumentChange: (
       listener: (change: { source: string }) => void,
     ) => () => void;

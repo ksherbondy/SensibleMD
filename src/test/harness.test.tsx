@@ -81,7 +81,7 @@ describe("FakeDesktop", () => {
     });
     expect(opened?.sessionId).toEqual(expect.any(String));
 
-    await desktop.api.saveOpenedDocument({ source: "# Notes edited" });
+    await desktop.api.saveOpenedDocument({ documentId: opened!.documentId, sessionId: opened!.sessionId, source: "# Notes edited" });
     expect(desktop.diskContents("/Users/reader/notes.md")).toBe(
       "# Notes edited",
     );
@@ -93,8 +93,8 @@ describe("FakeDesktop", () => {
   it("refuses a direct save when no document is authorized", async () => {
     const desktop = new FakeDesktop();
     await expect(
-      desktop.api.saveOpenedDocument({ source: "x" }),
-    ).rejects.toThrow("No authorized document is open");
+      desktop.api.saveOpenedDocument({ documentId: "missing", sessionId: "missing", source: "x" }),
+    ).resolves.toEqual({ error: "binding-mismatch" });
   });
 
   it("records recents and rotates recovery snapshots", async () => {

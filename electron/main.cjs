@@ -202,7 +202,14 @@ ipcMain.handle('recent:open', async (event, index) => {
 ipcMain.handle('document:save-opened', async (event, payload) => {
   if (!payload || typeof payload.source !== 'string') throw new Error('Invalid document save request')
   const session = authorizedDocumentSessions.get(event.sender.id)
-  if (!session) throw new Error('No authorized document is open')
+  if (event.sender.isDestroyed() || !session ||
+      typeof payload.documentId !== 'string' || !payload.documentId ||
+      typeof payload.sessionId !== 'string' || !payload.sessionId ||
+      payload.documentId !== session.documentId || payload.sessionId !== session.sessionId) {
+    return { error: 'binding-mismatch' }
+  }
+  // Capture the validated destination before the first write await. A later
+  // session replacement cannot retarget an already accepted save.
   await writeTextAtomically(session.filePath, payload.source)
   return { name: path.basename(session.filePath) }
 })

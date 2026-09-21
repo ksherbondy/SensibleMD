@@ -1,13 +1,17 @@
+import type { NativeSaveBinding } from "./use-native-save-binding";
 import type { CollectionDocument } from "./document-collection";
-import { asDocumentId, asSessionId, type DocumentId, type SessionId } from "./identity";
+import { asDocumentId, asSessionId, type DocumentId } from "./identity";
 
 interface DirectSaveInputs {
   savedDocumentId: string;
+  savedSessionId: string;
+  ownsBinding: () => boolean;
+  revokeBinding: () => void;
   savedVersion: number;
   source: string;
-  saveOpenedDocument: (payload: { source: string }) => Promise<unknown>;
+  saveOpenedDocument: NonNullable<Window["sensibleMD"]>["saveOpenedDocument"];
   readCurrentVersion: () => number;
-  markSaved: () => void;
+  markSaved: () => { isDirty: boolean };
   setIsDirty: (dirty: boolean) => void;
   setAppStatus: (status: string) => void;
   clearSavedRecovery: (documentId: string) => Promise<void>;
@@ -16,27 +20,36 @@ interface DirectSaveInputs {
 // Return the entire existing disk-save + cleanup chain for workspace tracking.
 // Keep invocation synchronous, including any synchronous API exception.
 export function saveWorkspaceDocumentDirectly({
-  savedDocumentId, savedVersion, source, saveOpenedDocument, readCurrentVersion,
+  savedDocumentId, savedSessionId, savedVersion, source, saveOpenedDocument, readCurrentVersion,
+  ownsBinding, revokeBinding,
   markSaved, setIsDirty, setAppStatus, clearSavedRecovery,
 }: DirectSaveInputs): Promise<void> {
-  return saveOpenedDocument({ source })
-    .then(async () => {
+  return saveOpenedDocument({ documentId: savedDocumentId, sessionId: savedSessionId, source })
+    .then(async (result) => {
+      if ("error" in result) {
+        if (ownsBinding()) {
+          revokeBinding();
+          setAppStatus("The file could not be saved. Your edits are still open.");
+        }
+        return;
+      }
       if (readCurrentVersion() !== savedVersion) {
         setAppStatus(
           "Saved the earlier version. Newer changes remain open.",
         );
         return;
       }
-      markSaved();
-      setIsDirty(false);
+      if (!ownsBinding()) return;
+      const saved = markSaved();
+      setIsDirty(saved.isDirty);
       setAppStatus("Saved.");
       await clearSavedRecovery(savedDocumentId);
     })
-    .catch(() =>
-      setAppStatus(
+    .catch(() => {
+      if (ownsBinding()) setAppStatus(
         "The file could not be saved. Your edits are still open.",
-      ),
-    );
+      );
+    });
 }
 
 interface SaveAsInputs {
@@ -50,13 +63,12 @@ interface SaveAsInputs {
     name: string;
   } | null>;
   ownsActivation: () => boolean;
-  readCurrentSnapshot: () => { text: string; version: number };
+  readCurrentSnapshot: () => { text: string; version: number; isDirty: boolean };
   setCollection: (update: (documents: CollectionDocument[]) => CollectionDocument[]) => void;
   setActiveDocumentId: (documentId: DocumentId) => void;
-  setActiveSessionId: (sessionId: SessionId) => void;
-  setCanSaveDirectly: (canSave: boolean) => void;
+  installBinding: (binding: NativeSaveBinding) => void;
   setDocumentName: (name: string) => void;
-  markSaved: () => void;
+  markSaved: () => { isDirty: boolean };
   setIsDirty: (dirty: boolean) => void;
   clearRecoveryNotice: () => void;
   refreshRecentDocuments: () => void;
@@ -68,7 +80,7 @@ interface SaveAsInputs {
 export function saveWorkspaceDocumentAs({
   savedDocumentId, savedVersion, documentName, source, saveNativeDocument,
   ownsActivation, readCurrentSnapshot, setCollection, setActiveDocumentId,
-  setActiveSessionId, setCanSaveDirectly, setDocumentName, markSaved, setIsDirty,
+  installBinding, setDocumentName, markSaved, setIsDirty,
   clearRecoveryNotice, refreshRecentDocuments, setAppStatus, clearSavedRecovery,
 }: SaveAsInputs): Promise<void> {
   return saveNativeDocument({ name: documentName, source })
@@ -85,11 +97,10 @@ export function saveWorkspaceDocumentAs({
           ? { ...document, id: newId, name: file.name, source: current.text }
           : document));
       setActiveDocumentId(newId);
-      setActiveSessionId(asSessionId(file.sessionId));
-      setCanSaveDirectly(true);
+      installBinding({ documentId: newId, sessionId: asSessionId(file.sessionId) });
       setDocumentName(file.name);
-      if (clean) markSaved();
-      setIsDirty(!clean);
+      const saved = clean ? markSaved() : current;
+      setIsDirty(saved.isDirty);
       clearRecoveryNotice();
       refreshRecentDocuments();
       setAppStatus(clean ? "Saved." : "Saved the earlier version. Newer changes remain open.");

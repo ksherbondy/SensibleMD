@@ -34,7 +34,7 @@ it('Save As adopts real path identity, closes the old watcher, watches new conte
     expect(adopted.sessionId).not.toBe(old.sessionId)
     expect(watchers[0].close).toHaveBeenCalledOnce()
     expect(watchers[1].filePath).toBe(path.dirname(newPath))
-    await invoke('document:save-opened', { source: '# Later Save' })
+    await invoke('document:save-opened', { documentId: adopted.documentId, sessionId: adopted.sessionId, source: '# Later Save' })
     expect(await fs.readFile(newPath, 'utf8')).toBe('# Later Save')
     expect(await fs.readFile(oldPath, 'utf8')).toBe('# Original')
     await watchers[0].notify(); expect(sender.send).not.toHaveBeenCalled()
@@ -52,7 +52,7 @@ it('Save As adopts real path identity, closes the old watcher, watches new conte
     await expect(invoke('document:save-as', { name: 'x.md', source: 'fail' })).rejects.toThrow('Watcher unavailable')
     expect(await fs.readFile(path.join(dir, 'recent-files.json'), 'utf8')).toBe(recents)
     expect(watchers[1].close).not.toHaveBeenCalled()
-    await invoke('document:save-opened', { source: '# Still active' })
+    await invoke('document:save-opened', { documentId: adopted.documentId, sessionId: adopted.sessionId, source: '# Still active' })
     expect(await fs.readFile(newPath, 'utf8')).toBe('# Still active')
   } finally { await fs.rm(dir, { recursive: true, force: true }) }
 })

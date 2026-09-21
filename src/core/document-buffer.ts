@@ -19,6 +19,11 @@ export interface SourceTransaction {
   edits: SourceEdit[];
 }
 
+// A retained baseline is valid only within the originating workspace buffer lifetime.
+export type RetainedBaseline =
+  | { kind: "clean" }
+  | { kind: "dirty"; savedVersion: number };
+
 export interface DocumentSnapshot {
   id: string;
   text: string;
@@ -79,6 +84,21 @@ export class DocumentBuffer {
       baseVersion: this.version,
       edits: [{ from: 0, to: this.text.length, insert: text }],
     });
+  }
+
+  // Activation changes the workspace revision even when text is identical.
+  // Only a known-clean target may rebase its saved marker to that new revision.
+  replaceForActivation(text: string, baseline: RetainedBaseline): DocumentSnapshot {
+    if (baseline.kind === "dirty" && (
+      !Number.isSafeInteger(baseline.savedVersion) ||
+      baseline.savedVersion < 0 || baseline.savedVersion > this.version
+    )) throw new Error("Invalid retained saved baseline");
+    this.text = text;
+    this.version += 1;
+    this.savedVersion = baseline.kind === "clean" ? this.version : baseline.savedVersion;
+    const snapshot = this.snapshot();
+    this.listeners.forEach((listener) => listener(snapshot));
+    return snapshot;
   }
 
   markSaved(): DocumentSnapshot {

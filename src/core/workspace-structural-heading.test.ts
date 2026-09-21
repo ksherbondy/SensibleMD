@@ -13,7 +13,7 @@ it.each([['# A', 'promote'], ['###### A', 'demote']] as const)('returns before a
   expect(setCollection).not.toHaveBeenCalled(); expect(setSource).not.toHaveBeenCalled(); expect(setIsDirty).not.toHaveBeenCalled();
 });
 
-it('preserves exact apply/baseVersion and snapshot timing including the deferred collection read', () => {
+it('publishes the captured transaction text to React and the latest collection container', () => {
   const documents = createCollection([{ name: 'A.md', source: '# A' }, { name: 'B.md', source: '# B' }]);
   const calls: string[] = [];
   let text = '# A'; let version = 7;
@@ -34,17 +34,17 @@ it('preserves exact apply/baseVersion and snapshot timing including the deferred
     setSource: source => { calls.push('source'); expect(source).toBe('## A'); },
     setIsDirty: dirty => { calls.push('dirty'); expect(dirty).toBe(true); },
   });
-  expect(calls).toEqual(['snapshot', 'apply', 'collection', 'snapshot', 'source', 'dirty']);
+  expect(calls).toEqual(['snapshot', 'apply', 'collection', 'source', 'dirty']);
   expect(buffer.apply).toHaveBeenCalledOnce();
-  // The original updater reads the live buffer when React applies it; it does not cache apply's text.
+  // Later buffer changes must not change the transaction published to A.
   text = '## Later buffer text';
   const newerB = { ...documents[1], source: '# Later B' };
   const current = [documents[0], newerB];
   Object.freeze(current); Object.freeze(documents[0]); Object.freeze(newerB);
   const result = update!(current);
-  expect(calls.at(-1)).toBe('snapshot');
-  expect(buffer.snapshot).toHaveBeenCalledTimes(3);
-  expect(result[0]).toEqual({ ...documents[0], source: text });
+  expect(calls).toEqual(['snapshot', 'apply', 'collection', 'source', 'dirty']);
+  expect(buffer.snapshot).toHaveBeenCalledOnce();
+  expect(result[0]).toEqual({ ...documents[0], source: '## A' });
   expect(result[1]).toBe(newerB);
   expect(current[0].source).toBe('# A');
 });

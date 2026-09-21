@@ -1,3 +1,5 @@
+import { useNativeSaveBinding } from "./core/use-native-save-binding";
+import { InactiveDocumentBaselines } from "./core/inactive-document-baselines";
 import { useReaderMetadata } from "./core/use-reader-metadata";
 import { saveWorkspaceDocumentAs, saveWorkspaceDocumentDirectly } from "./core/workspace-save-actions";
 import { useWorkspaceRecovery, useWorkspaceRecoveryLoad, useWorkspaceRecoveryWrite } from "./core/use-workspace-recovery";
@@ -94,7 +96,6 @@ import {
   browserDocumentId,
   WELCOME_DOCUMENT_ID,
   type DocumentId,
-  type SessionId,
 } from "./core/identity";
 import {
   searchCollection,
@@ -206,11 +207,22 @@ function DocumentWorkspace({
   const [activeDocumentId, commitActiveDocumentId] = useState<DocumentId>(
     () => initialCollection()[0].id,
   );
+  const [baselines] = useState(() => new InactiveDocumentBaselines(
+    collection.map(document => document.id), activeDocumentId,
+  ));
+  const { binding, readBinding, installBinding, revokeBinding } = useNativeSaveBinding(
+    initialDocument?.canSaveDirectly && initialDocument.sessionId
+      ? { documentId: initialDocument.id, sessionId: initialDocument.sessionId }
+      : null,
+  );
+  const activeSessionId = binding?.documentId === activeDocumentId ? binding.sessionId : null;
+  const canSaveDirectly = activeSessionId !== null;
   // Save As owns one renderer activation lifetime, independently of edits.
   const saveAsOwnership = useRef({ generation: 0, mounted: false });
   const setActiveDocumentId = (documentId: DocumentId) => {
     // Invalidate synchronously, including same-ID reopen and batched A→B→A.
     saveAsOwnership.current.generation += 1;
+    revokeBinding();
     commitActiveDocumentId(documentId);
   };
   useLayoutEffect(() => {
@@ -221,13 +233,7 @@ function DocumentWorkspace({
       ownership.generation += 1;
     };
   }, []);
-  const [activeSessionId, setActiveSessionId] = useState<SessionId | null>(
-    initialDocument?.sessionId ?? null,
-  );
   const [isDirty, setIsDirty] = useState(false);
-  const [canSaveDirectly, setCanSaveDirectly] = useState(
-    initialDocument?.canSaveDirectly ?? false,
-  );
   const [externalChange, setExternalChange] = useState<string | null>(null);
   const [sectionSummaryOpen, setSectionSummaryOpen] = useState(false);
   const [view, setView] = useState<ViewMode>("read");
@@ -622,11 +628,12 @@ function DocumentWorkspace({
         return;
       }
       buffer.replace(diskSource, "external-reload");
-      buffer.markSaved();
+      const saved = buffer.markSaved();
       setCollection((documents) =>
         replaceCollectionDocument(documents, activeDocumentId, diskSource),
       );
       setSource(diskSource);
+      setIsDirty(saved.isDirty);
     });
   }, [activeDocumentId, buffer, isDirty]);
 
@@ -783,9 +790,11 @@ function DocumentWorkspace({
       entry?.documentId &&
       collection.find((document) => document.id === entry.documentId);
     if (entry && targetDocument && targetDocument.id !== activeDocumentId) {
-      buffer.replace(targetDocument.source, "programmatic");
+      const activated = buffer.replaceForActivation(targetDocument.source,
+        baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
       setActiveDocumentId(targetDocument.id);
-      setSource(targetDocument.source);
+      setSource(activated.text);
+      setIsDirty(activated.isDirty);
       setDocumentName(targetDocument.name);
       const targetHeading = parseSemanticDocument(
         targetDocument.source,
@@ -838,9 +847,11 @@ function DocumentWorkspace({
         headingId: originHeadingId,
         reason: "manual",
       });
-    buffer.replace(targetDocument.source, "programmatic");
+    const activated = buffer.replaceForActivation(targetDocument.source,
+      baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
     setActiveDocumentId(targetDocument.id);
-    setSource(targetDocument.source);
+    setSource(activated.text);
+    setIsDirty(activated.isDirty);
     setDocumentName(targetDocument.name);
     setNavigationNode(targetHeading?.id ?? "");
     setView("read");
@@ -895,9 +906,11 @@ function DocumentWorkspace({
     );
     if (!targetDocument) return;
     if (targetDocument.id !== activeDocumentId) {
-      buffer.replace(targetDocument.source, "programmatic");
+      const activated = buffer.replaceForActivation(targetDocument.source,
+        baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
       setActiveDocumentId(targetDocument.id);
-      setSource(targetDocument.source);
+      setSource(activated.text);
+      setIsDirty(activated.isDirty);
       setDocumentName(targetDocument.name);
       setNavigationNode("");
       setView("read");
@@ -952,9 +965,11 @@ function DocumentWorkspace({
       );
       if (heading) goToHeading(heading, "history", false);
     } else {
-      buffer.replace(originDocument.source, "programmatic");
+      const activated = buffer.replaceForActivation(originDocument.source,
+        baselines.takeForActivation(originDocument.id, buffer.snapshot()));
       setActiveDocumentId(originDocument.id);
-      setSource(originDocument.source);
+      setSource(activated.text);
+      setIsDirty(activated.isDirty);
       setDocumentName(originDocument.name);
       setNavigationNode(searchOrigin.headingId);
       setView("read");
@@ -980,14 +995,13 @@ function DocumentWorkspace({
         { id: browserDocumentId(file), name: file.name, source },
       ]);
       buffer.replace(source, "programmatic");
-      buffer.markSaved();
+      const saved = buffer.markSaved();
+      baselines.reset(documents.map(document => document.id), documents[0].id);
       setCollection(documents);
       setActiveDocumentId(documents[0].id);
-      setActiveSessionId(null);
       setSource(source);
       setDocumentName(file.name);
-      setCanSaveDirectly(false);
-      setIsDirty(false);
+      setIsDirty(saved.isDirty);
       setNavigationNode("");
       setView("read");
     };
@@ -1012,15 +1026,14 @@ function DocumentWorkspace({
         ),
       );
       const active = documents[0];
+      baselines.reset(documents.map(document => document.id), documents[0].id);
       setCollection(documents);
       setActiveDocumentId(active.id);
-      setActiveSessionId(null);
       buffer.replace(active.source, "programmatic");
-      buffer.markSaved();
+      const saved = buffer.markSaved();
       setSource(active.source);
       setDocumentName(active.name);
-      setCanSaveDirectly(false);
-      setIsDirty(false);
+      setIsDirty(saved.isDirty);
       setNavigationNode("");
       setView("read");
     });
@@ -1048,12 +1061,12 @@ function DocumentWorkspace({
       targetModel.headings.map((heading) => heading.id),
     );
     const resolved = resolveSemanticPosition(targetModel, remembered?.position);
-    buffer.replace(collectionDocument.source, "programmatic");
+    const activated = buffer.replaceForActivation(collectionDocument.source,
+      baselines.takeForActivation(collectionDocument.id, buffer.snapshot()));
     setActiveDocumentId(collectionDocument.id);
-    setSource(collectionDocument.source);
+    setSource(activated.text);
+    setIsDirty(activated.isDirty);
     setDocumentName(collectionDocument.name);
-    setCanSaveDirectly(false);
-    setIsDirty(false);
     setBookmarks(
       remembered?.bookmarks.filter((bookmark) => headingIds.has(bookmark)) ??
         [],
@@ -1089,17 +1102,17 @@ function DocumentWorkspace({
         headingId: originHeadingId,
         reason: "manual",
       });
-    buffer.replace(targetDocument.source, "programmatic");
+    const activated = buffer.replaceForActivation(targetDocument.source,
+      baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
     const targetHeading = parseSemanticDocument(
       targetDocument.source,
       buffer.snapshot().version,
     ).headings[0];
     setActiveDocumentId(targetDocument.id);
-    setSource(targetDocument.source);
+    setSource(activated.text);
+    setIsDirty(activated.isDirty);
     setDocumentName(targetDocument.name);
     setNavigationNode(targetHeading?.id ?? "");
-    setCanSaveDirectly(false);
-    setIsDirty(false);
     setView("read");
     if (targetHeading)
       historyRef.current.visit({
@@ -1136,14 +1149,14 @@ function DocumentWorkspace({
       },
     ]);
     buffer.replace(file.source, "programmatic");
-    buffer.markSaved();
+    const saved = buffer.markSaved();
+    baselines.reset(documents.map(document => document.id), documents[0].id);
     setCollection(documents);
     setActiveDocumentId(documents[0].id);
-    setActiveSessionId(asSessionId(file.sessionId));
+    installBinding({ documentId: documents[0].id, sessionId: asSessionId(file.sessionId) });
     setSource(file.source);
     setDocumentName(file.name);
-    setCanSaveDirectly(true);
-    setIsDirty(false);
+    setIsDirty(saved.isDirty);
     setNavigationNode("");
     setView("read");
     refreshRecentDocuments();
@@ -1167,14 +1180,14 @@ function DocumentWorkspace({
       },
     ]);
     buffer.replace(file.source, "programmatic");
-    buffer.markSaved();
+    const saved = buffer.markSaved();
+    baselines.reset(documents.map(document => document.id), documents[0].id);
     setCollection(documents);
     setActiveDocumentId(documents[0].id);
-    setActiveSessionId(asSessionId(file.sessionId));
+    installBinding({ documentId: documents[0].id, sessionId: asSessionId(file.sessionId) });
     setSource(file.source);
     setDocumentName(file.name);
-    setCanSaveDirectly(true);
-    setIsDirty(false);
+    setIsDirty(saved.isDirty);
     setNavigationNode("");
     setView("read");
     refreshRecentDocuments();
@@ -1187,13 +1200,20 @@ function DocumentWorkspace({
     const savedDocumentId = activeDocumentId;
     const savedVersion = buffer.snapshot().version;
     const saveOpenedDocument = window.sensibleMD?.saveOpenedDocument;
-    if (canSaveDirectly && typeof saveOpenedDocument === "function") {
+    const invocationBinding = readBinding();
+    if (invocationBinding?.documentId === activeDocumentId && typeof saveOpenedDocument === "function") {
+      const generation = saveAsOwnership.current.generation;
+      const ownsBinding = () => saveAsOwnership.current.mounted &&
+        saveAsOwnership.current.generation === generation && readBinding() === invocationBinding;
       trackSave(
         saveWorkspaceDocumentDirectly({
           savedDocumentId,
+          savedSessionId: invocationBinding.sessionId,
           savedVersion,
           source,
           saveOpenedDocument,
+          ownsBinding,
+          revokeBinding,
           readCurrentVersion: () => buffer.snapshot().version,
           markSaved: () => buffer.markSaved(),
           setIsDirty,
@@ -1218,9 +1238,11 @@ function DocumentWorkspace({
           ownsActivation,
           readCurrentSnapshot: () => buffer.snapshot(),
           setCollection,
-          setActiveDocumentId,
-          setActiveSessionId,
-          setCanSaveDirectly,
+          setActiveDocumentId: documentId => {
+            baselines.remapActive(documentId);
+            setActiveDocumentId(documentId);
+          },
+          installBinding,
           setDocumentName,
           markSaved: () => buffer.markSaved(),
           setIsDirty,
@@ -1305,17 +1327,17 @@ function DocumentWorkspace({
   const reloadExternalChange = () => {
     if (externalChange === null) return;
     buffer.replace(externalChange, "external-reload");
-    buffer.markSaved();
+    const saved = buffer.markSaved();
     setCollection((documents) =>
       replaceCollectionDocument(documents, activeDocumentId, externalChange),
     );
     setSource(externalChange);
-    setIsDirty(false);
+    setIsDirty(saved.isDirty);
     setExternalChange(null);
   };
   const restoreRecoverySnapshot = () => {
     if (!recoverySnapshot) return;
-    buffer.replace(recoverySnapshot.source, "recovery");
+    const restored = buffer.replace(recoverySnapshot.source, "recovery");
     setCollection((documents) =>
       replaceCollectionDocument(
         documents,
@@ -1324,7 +1346,7 @@ function DocumentWorkspace({
       ),
     );
     setSource(recoverySnapshot.source);
-    setIsDirty(true);
+    setIsDirty(restored.isDirty);
     setRecoverySnapshot(null);
     setAppStatus("Recovered unsaved changes. Save when ready.");
   };

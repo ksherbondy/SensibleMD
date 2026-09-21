@@ -59,6 +59,108 @@ try {
   await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
   assert.match(await evaluate('smokeWindow.webContents.getURL()'), /^file:/);
   console.log('PASS packaged file:// launch (no dev server)');
+  // Exercise baseline custody through real browser import and CodeMirror input.
+  const importBaselineCollection = async () => {
+    await renderer(`(() => { const transfer = new DataTransfer(); transfer.items.add(new File(['# Baseline A'], 'BaselineA.md', {type: 'text/markdown'})); const input = document.querySelector('input[type=file]'); input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles: true})); })()`);
+    await until(() => renderer(`!!document.querySelector('input[multiple]')`));
+    await renderer(`(() => { const transfer = new DataTransfer(); transfer.items.add(new File(['# Baseline A'], 'BaselineA.md', {type: 'text/markdown'})); transfer.items.add(new File(['# Baseline B'], 'BaselineB.md', {type: 'text/markdown'})); const input = document.querySelector('input[multiple]'); input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles: true})); })()`);
+    await until(() => renderer(`document.querySelectorAll('.chapter-list button').length === 2`));
+  };
+  const selectBaselineChapter = async name => {
+    await renderer(`Array.from(document.querySelectorAll('.chapter-list button')).find(b => b.textContent.includes(${JSON.stringify(name)})).click()`);
+    await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === ${JSON.stringify(name)}`));
+  };
+  await importBaselineCollection();
+  await selectBaselineChapter('BaselineB.md');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  await renderer(`document.querySelector('[aria-label="Close document"]').click()`);
+  await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
+  console.log('PASS packaged untouched chapter stays clean and Close Document succeeds');
+
+  await importBaselineCollection();
+  await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Write').click()`);
+  await until(() => renderer(`!!document.querySelector('.cm-content')`));
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('unsaved baseline ')`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'true'`));
+  const editedBaselineSource = await renderer(`localStorage.getItem('sensiblemd-document')`);
+  await selectBaselineChapter('BaselineB.md');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  await selectBaselineChapter('BaselineA.md');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'true');
+  assert.equal(await renderer(`localStorage.getItem('sensiblemd-document')`), editedBaselineSource);
+  await renderer(`document.querySelector('[aria-label="Close document"]').click()`);
+  await until(() => renderer(`document.querySelector('.app-status')?.textContent === 'Save your changes before closing this document.'`));
+  console.log('PASS packaged edited A survives untouched B round trip and still refuses Close Document');
+  const baselineFile = path.join(profile, 'BaselineSaved.md');
+  await evaluate(`smokeElectron.dialog.showSaveDialog = async () => ({canceled: false, filePath: ${JSON.stringify(baselineFile)}})`);
+  await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BaselineSaved.md' && document.querySelector('.app-shell').dataset.dirty === 'false'`));
+  assert.equal(await readFile(baselineFile, 'utf8'), editedBaselineSource);
+  await selectBaselineChapter('BaselineB.md');
+  await selectBaselineChapter('BaselineSaved.md');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  assert.equal(await renderer(`localStorage.getItem('sensiblemd-document')`), editedBaselineSource);
+  await delay(150);
+  await renderer(`document.querySelector('[aria-label="Close document"]').click()`);
+  await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
+  console.log('PASS packaged Save As remap retains a clean baseline on departure/return and closes');
+
+  // Wrong-file regression: real renderer activation, IPC and temporary files.
+  await importBaselineCollection();
+  // Put the cross-document link into A using the real editor.
+  await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Write').click()`);
+  await until(() => renderer(`!!document.querySelector('.cm-content')`));
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText(${JSON.stringify('[Go to B](BaselineB.md)\n\n')})`);
+  const boundAFile = path.join(profile, 'BoundA.md'), boundBFile = path.join(profile, 'BoundB.md');
+  await evaluate(`smokeElectron.dialog.showSaveDialog = async () => ({canceled: false, filePath: ${JSON.stringify(boundAFile)}})`);
+  await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BoundA.md' && document.querySelector('.app-shell').dataset.dirty === 'false'`));
+  const aBinding = await renderer(`({documentId: document.querySelector('.app-shell').dataset.documentId, sessionId: document.querySelector('.app-shell').dataset.sessionId})`);
+  const boundASource = await readFile(boundAFile, 'utf8');
+  for (const badBinding of [{}, {...aBinding, documentId: 'wrong-document'}, {...aBinding, sessionId: 'stale-session'}]) {
+    assert.deepEqual(await renderer(`window.sensibleMD.saveOpenedDocument(${JSON.stringify({...badBinding, source: '# Must not overwrite'})})`), {error: 'binding-mismatch'});
+    assert.equal(await readFile(boundAFile, 'utf8'), boundASource);
+  }
+  console.log('PASS packaged main rejects missing/mismatched direct-save bindings without altering A');
+  await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Read').click()`);
+  await until(() => renderer(`!!Array.from(document.querySelectorAll('a')).find(a => a.textContent === 'Go to B')`));
+  await renderer(`Array.from(document.querySelectorAll('a')).find(a => a.textContent === 'Go to B').click()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BaselineB.md'`));
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.sessionId`), '');
+  await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Write').click()`);
+  await until(() => renderer(`!!document.querySelector('.cm-content')`));
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('edited B ')`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'true'`));
+  const boundBSource = await renderer(`localStorage.getItem('sensiblemd-document')`);
+  await evaluate(`globalThis.bindingCancelDialogs = 0; smokeElectron.dialog.showSaveDialog = async () => { bindingCancelDialogs++; return {canceled: true}; }`);
+  await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+  await until(() => evaluate('bindingCancelDialogs === 1'));
+  assert.equal(await readFile(boundAFile, 'utf8'), boundASource);
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'true');
+  console.log('PASS packaged browser B revokes A binding and Save As cancellation preserves A and dirty B');
+  await evaluate(`smokeElectron.dialog.showSaveDialog = async () => ({canceled: false, filePath: ${JSON.stringify(boundBFile)}})`);
+  await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BoundB.md' && document.querySelector('.app-shell').dataset.dirty === 'false'`));
+  assert.equal(await readFile(boundBFile, 'utf8'), boundBSource);
+  assert.deepEqual(await renderer(`window.sensibleMD.saveOpenedDocument(${JSON.stringify({...aBinding, source: '# Stale A request'})})`), {error: 'binding-mismatch'});
+  assert.equal(await readFile(boundAFile, 'utf8'), boundASource);
+  assert.equal(await readFile(boundBFile, 'utf8'), boundBSource);
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('direct B ')`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'true'`));
+  const directBSource = await renderer(`localStorage.getItem('sensiblemd-document')`);
+  await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.dirty === 'false'`));
+  assert.equal(await readFile(boundBFile, 'utf8'), directBSource);
+  assert.equal(await readFile(boundAFile, 'utf8'), boundASource);
+  console.log('PASS packaged B adoption/direct save uses B only; obsolete A session is rejected');
+  await delay(150);
+  await renderer(`document.querySelector('[aria-label="Close document"]').click()`);
+  await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
+
   // Save As gate: reuse the real renderer's browser-import path to begin
   // without native direct-save capability. Only native dialog results are injected.
   const saveAsFile = path.join(profile, 'adopted.md');

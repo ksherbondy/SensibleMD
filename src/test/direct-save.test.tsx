@@ -35,7 +35,7 @@ it('marks clean after disk resolution and keeps tracking through recovery cleanu
   const mark = vi.spyOn(buffer, 'markSaved');
   try {
     await s.save();
-    expect(save).toHaveBeenCalledExactlyOnceWith({ source: '# A edited' });
+    expect(save).toHaveBeenCalledExactlyOnceWith({ documentId: id, sessionId: s.desktop.sessions.at(-1)!.sessionId, source: '# A edited' });
     expect(mark).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
     await act(async () => disk.resolve({ name: 'A.md' }));
     expect(mark).toHaveBeenCalledTimes(1); expect(s.isDirty()).toBe(false);
@@ -89,8 +89,7 @@ it('failure preserves saved baseline and recovery and settles tracking for a sub
 it('an older A disk completion cannot mark newly active edited B clean', async () => {
   const { s, buffer } = await setup();
   const disk = deferred<{ name: string }>();
-  // Hold only renderer completion; FakeDesktop otherwise resolves authorization
-  // at release time, which is not the native invocation-bound capability contract.
+  // Hold renderer completion independently of the native accepted write.
   const save = vi.spyOn(s.desktop.api, 'saveOpenedDocument').mockReturnValueOnce(disk.promise);
   const mark = vi.spyOn(buffer, 'markSaved');
   try {
@@ -125,7 +124,8 @@ it('preserves overlapping saves and their existing out-of-order completion behav
   try {
     s.scheduler.useManualOrder(); await s.save();
     await s.appendToEditor(' newer'); await s.save();
-    expect(save.mock.calls).toEqual([[{ source: '# A edited' }], [{ source: '# A edited newer' }]]);
+    const sessionId = s.desktop.sessions.at(-1)!.sessionId;
+    expect(save.mock.calls).toEqual([[{ documentId: id, sessionId, source: '# A edited' }], [{ documentId: id, sessionId, source: '# A edited newer' }]]);
     expect(s.scheduler.pending('document:save-opened')).toHaveLength(2);
     await act(async () => s.scheduler.releaseLatest('document:save-opened'));
     await act(async () => s.scheduler.release('recovery:clear'));
@@ -148,7 +148,7 @@ it('keeps render source separate from invocation version and live completion ver
     buffer.replace('# Buffer-only advancement', 'programmatic');
     const invocationVersion = buffer.snapshot().version;
     await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true })));
-    expect(save).toHaveBeenCalledExactlyOnceWith({ source: '# A edited' });
+    expect(save).toHaveBeenCalledExactlyOnceWith({ documentId: id, sessionId: s.desktop.sessions.at(-1)!.sessionId, source: '# A edited' });
     await act(async () => disk.resolve({ name: 'A.md' }));
     expect(mark).toHaveBeenCalledTimes(1);
     expect(buffer.snapshot().savedVersion).toBe(invocationVersion);

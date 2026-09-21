@@ -204,16 +204,19 @@ export class FakeDesktop {
           }
         }),
 
-      saveOpenedDocument: (payload: { source: string }) =>
-        this.scheduler.schedule("document:save-opened", () => {
+      saveOpenedDocument: (payload) => {
+        const session = this.sessions.at(-1);
+        if (!session || payload.documentId !== session.documentId || payload.sessionId !== session.sessionId)
+          return Promise.resolve({ error: "binding-mismatch" });
+        const filePath = session.filePath;
+        return this.scheduler.schedule("document:save-opened", () => {
           if (this.failures.save)
             throw new Error("The file could not be saved.");
-          const filePath = this.authorizedPath;
-          if (!filePath) throw new Error("No authorized document is open");
           this.files.set(filePath, payload.source);
           this.writes.push({ path: filePath, source: payload.source });
           return { name: basename(filePath) };
-        }),
+        });
+      },
 
       saveDocumentAs: (payload: { name: string; source: string }) =>
         this.scheduler.schedule("document:save-as", () => {

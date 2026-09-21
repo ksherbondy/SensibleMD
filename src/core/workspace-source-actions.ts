@@ -16,12 +16,12 @@ export function updateWorkspaceSource(
   { buffer, activeDocumentId, setCollection, setSource, setIsDirty }: SourceUpdateInputs,
 ): void {
   if (nextSource === buffer.snapshot().text) return;
-  buffer.replace(nextSource, "editor");
+  const updated = buffer.replace(nextSource, "editor");
   setCollection((documents) =>
     replaceCollectionDocument(documents, activeDocumentId, nextSource),
   );
   setSource(nextSource);
-  setIsDirty(true);
+  setIsDirty(updated.isDirty);
 }
 
 export interface StructuralHeadingChangeInputs {
@@ -40,7 +40,7 @@ export function applyWorkspaceStructuralHeadingChange(
 ): void {
   const edit = changeHeadingLevel(source, editorLine, direction);
   if (!edit) return;
-  buffer.apply({
+  const updated = buffer.apply({
     origin: "structural-command",
     baseVersion: buffer.snapshot().version,
     edits: [edit],
@@ -49,9 +49,9 @@ export function applyWorkspaceStructuralHeadingChange(
     replaceCollectionDocument(
       documents,
       activeDocumentId,
-      buffer.snapshot().text,
+      updated.text,
     ),
   );
-  setSource(buffer.snapshot().text);
-  setIsDirty(true);
+  setSource(updated.text);
+  setIsDirty(updated.isDirty);
 }
