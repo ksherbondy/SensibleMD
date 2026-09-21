@@ -1,3 +1,4 @@
+import { useReaderMetadata } from "./core/use-reader-metadata";
 import { saveWorkspaceDocumentAs, saveWorkspaceDocumentDirectly } from "./core/workspace-save-actions";
 import { useWorkspaceRecovery, useWorkspaceRecoveryLoad, useWorkspaceRecoveryWrite } from "./core/use-workspace-recovery";
 import { useWorkspaceKeyboard } from "./core/use-workspace-keyboard";
@@ -576,34 +577,12 @@ function DocumentWorkspace({
     };
   }, [activeDocumentId]);
 
-  useEffect(() => {
-    const saveState = window.sensibleMD?.saveDocumentState;
-    if (!readerStateReady || closing || typeof saveState !== "function") return;
-    const timer = window.setTimeout(() => {
-      const write = saveState(createReaderStatePayload({
-        documentId: activeDocumentId,
-        bookmarks,
-        activeHeading,
-        semanticDocument,
-        activeNodeId,
-        fontScale,
-        lineHeight,
-        contentWidth,
-        reducedMotion,
-      })).catch(() =>
-        setAppStatus(
-          "Desktop settings could not be saved. Your document remains open.",
-        ),
-      );
-      pendingReaderWrites.current.add(write);
-      void write.finally(() => pendingReaderWrites.current.delete(write));
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [
+  useReaderMetadata({
     activeDocumentId,
-    activeHeading,
-    activeNodeId,
     bookmarks,
+    activeHeading,
+    semanticDocument,
+    activeNodeId,
     fontScale,
     lineHeight,
     contentWidth,
@@ -611,7 +590,9 @@ function DocumentWorkspace({
     source,
     closing,
     readerStateReady,
-  ]);
+    pendingReaderWrites,
+    setAppStatus,
+  });
 
   const readRecoverySnapshot = useCallback(() => buffer.snapshot(), [buffer]);
   useWorkspaceRecoveryWrite({
