@@ -106,6 +106,97 @@ try {
   await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
   console.log('PASS packaged Save As remap retains a clean baseline on departure/return and closes');
 
+  // Editor ownership: actual CodeMirror dispatch after synchronous activation,
+  // before React commits/unmounts the outgoing editor. No renderer test API.
+  const enterSmokeWrite = async () => {
+    await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Write').click()`);
+    await until(() => renderer(`!!document.querySelector('.cm-content')`));
+  };
+  const closeSavedSmoke = async name => {
+    const destination = path.join(profile, name);
+    const source = await renderer(`localStorage.getItem('sensiblemd-document')`);
+    await evaluate(`smokeElectron.dialog.showSaveDialog = async () => ({canceled: false, filePath: ${JSON.stringify(destination)}})`);
+    await renderer(`document.querySelector('[aria-label="Save"]').click()`);
+    await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === ${JSON.stringify(name)} && document.querySelector('.app-shell').dataset.dirty === 'false'`));
+    assert.equal(await readFile(destination, 'utf8'), source);
+    await delay(150);
+    await renderer(`document.querySelector('[aria-label="Close document"]').click()`);
+    await until(async () => (await renderer('document.body.innerText')).includes('No document open'));
+  };
+  await importBaselineCollection();
+  await enterSmokeWrite();
+  await renderer(`(() => {
+    const editor = document.querySelector('.cm-content').cmTile.root.view;
+    Array.from(document.querySelectorAll('.chapter-list button')).find(b => b.textContent.includes('BaselineB.md')).click();
+    if (editor.state.doc.toString() !== '# Baseline A') throw new Error('Expected outgoing A editor');
+    editor.dispatch({changes: {from: editor.state.doc.length, insert: ' obsolete A edit'}});
+  })()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BaselineB.md'`));
+  assert.equal(await renderer(`localStorage.getItem('sensiblemd-document')`), '# Baseline B');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  await selectBaselineChapter('BaselineA.md');
+  assert.equal(await renderer(`localStorage.getItem('sensiblemd-document')`), '# Baseline A');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  console.log('PASS packaged outgoing A editor cannot mutate B before React commits');
+  await enterSmokeWrite();
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('current ')`);
+  await until(() => renderer(`localStorage.getItem('sensiblemd-document')?.includes('current ')`));
+  const typedEditorSource = await renderer(`localStorage.getItem('sensiblemd-document')`);
+  await renderer(`document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', metaKey: true, bubbles: true}))`);
+  await until(() => renderer(`localStorage.getItem('sensiblemd-document') === '# Baseline A'`));
+  await renderer(`document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Z', code: 'KeyZ', keyCode: 90, metaKey: true, shiftKey: true, bubbles: true, cancelable: true}))`);
+  await until(() => renderer(`localStorage.getItem('sensiblemd-document') === ${JSON.stringify(typedEditorSource)}`));
+  await closeSavedSmoke('EditorUndo.md');
+  console.log('PASS packaged current editor typing/undo/redo and saved file remain aligned');
+
+  await importBaselineCollection();
+  const beforeStableImportId = await renderer(`document.querySelector('.app-shell').dataset.documentId`);
+  await renderer(`(() => {
+    globalThis.editorReimportFiles = [new File(['# Baseline A'], 'BaselineA.md', {lastModified: 1}), new File(['# Baseline B'], 'BaselineB.md', {lastModified: 1})];
+    const transfer = new DataTransfer(); editorReimportFiles.forEach(file => transfer.items.add(file));
+    const input = document.querySelector('input[multiple]'); input.files = transfer.files;
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+  })()`);
+  await until(() => renderer(`document.querySelector('.app-shell').dataset.documentId !== ${JSON.stringify(beforeStableImportId)}`));
+  const sameEditorId = await renderer(`document.querySelector('.app-shell').dataset.documentId`);
+  await enterSmokeWrite();
+  await renderer(`(() => {
+    const transfer = new DataTransfer(); editorReimportFiles.forEach(file => transfer.items.add(file));
+    const input = document.querySelector('input[multiple]'); input.files = transfer.files;
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+  })()`);
+  await until(() => renderer(`!document.querySelector('.cm-content')`));
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.documentId`), sameEditorId);
+  assert.equal(await renderer(`localStorage.getItem('sensiblemd-document')`), '# Baseline A');
+  assert.equal(await renderer(`document.querySelector('.app-shell').dataset.dirty`), 'false');
+  await enterSmokeWrite();
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText(${JSON.stringify('[Editor go B](BaselineB.md)\n\n')})`);
+  await until(() => renderer(`localStorage.getItem('sensiblemd-document')?.includes('[Editor go B]')`));
+  const historyASource = await renderer(`localStorage.getItem('sensiblemd-document')`);
+  console.log('PASS packaged same-ID reimport publishes a usable fresh editor activation');
+  await renderer(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Read').click()`);
+  await until(() => renderer(`!!Array.from(document.querySelectorAll('a')).find(a => a.textContent === 'Editor go B')`));
+  await renderer(`Array.from(document.querySelectorAll('a')).find(a => a.textContent === 'Editor go B').click()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BaselineB.md'`));
+  await enterSmokeWrite();
+  await renderer(`globalThis.editorBeforeHistory = document.querySelector('.cm-content').cmTile.root.view; document.querySelector('[aria-label="Show command palette"]').click()`);
+  await until(() => renderer(`!!document.querySelector('#command-search')`));
+  await renderer(`document.querySelector('#command-search').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('Go Back')`);
+  await until(() => renderer(`!!Array.from(document.querySelectorAll('.command-palette button')).find(b => b.textContent.includes('Go Back'))`));
+  await renderer(`Array.from(document.querySelectorAll('.command-palette button')).find(b => b.textContent.includes('Go Back')).click()`);
+  await until(() => renderer(`document.querySelector('.document-title > span')?.textContent === 'BaselineA.md'`));
+  assert.equal(await renderer(`document.querySelector('.cm-content').cmTile.root.view === editorBeforeHistory`), true);
+  assert.equal(await renderer(`editorBeforeHistory.state.doc.toString()`), historyASource);
+  assert.equal(await renderer(`localStorage.getItem('sensiblemd-document')`), historyASource);
+  await renderer(`document.querySelector('.cm-content').focus()`);
+  await evaluate(`smokeWindow.webContents.insertText('fresh history ')`);
+  await until(() => renderer(`localStorage.getItem('sensiblemd-document')?.includes('fresh history ')`));
+  await closeSavedSmoke('EditorHistory.md');
+  console.log('PASS packaged history retains the EditorView, projects A source, and accepts fresh A edits');
+
   // Wrong-file regression: real renderer activation, IPC and temporary files.
   await importBaselineCollection();
   // Put the cross-document link into A using the real editor.

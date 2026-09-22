@@ -1,3 +1,4 @@
+import { EditorMutationOwnership, type EditorMutationOrigin } from "./core/editor-mutation-ownership";
 import { useNativeSaveBinding } from "./core/use-native-save-binding";
 import { InactiveDocumentBaselines } from "./core/inactive-document-baselines";
 import { useReaderMetadata } from "./core/use-reader-metadata";
@@ -217,22 +218,27 @@ function DocumentWorkspace({
   );
   const activeSessionId = binding?.documentId === activeDocumentId ? binding.sessionId : null;
   const canSaveDirectly = activeSessionId !== null;
+  const [editorOwnership] = useState(() => new EditorMutationOwnership(activeDocumentId));
+  const [editorActivation, setEditorActivation] = useState(editorOwnership.initial);
   // Save As owns one renderer activation lifetime, independently of edits.
   const saveAsOwnership = useRef({ generation: 0, mounted: false });
   const setActiveDocumentId = (documentId: DocumentId) => {
     // Invalidate synchronously, including same-ID reopen and batched A→B→A.
     saveAsOwnership.current.generation += 1;
     revokeBinding();
+    setEditorActivation(editorOwnership.activate(documentId));
     commitActiveDocumentId(documentId);
   };
   useLayoutEffect(() => {
     const ownership = saveAsOwnership.current;
     ownership.mounted = true;
+    editorOwnership.mount();
     return () => {
+      editorOwnership.unmount();
       ownership.mounted = false;
       ownership.generation += 1;
     };
-  }, []);
+  }, [editorOwnership]);
   const [isDirty, setIsDirty] = useState(false);
   const [externalChange, setExternalChange] = useState<string | null>(null);
   const [sectionSummaryOpen, setSectionSummaryOpen] = useState(false);
@@ -790,6 +796,7 @@ function DocumentWorkspace({
       entry?.documentId &&
       collection.find((document) => document.id === entry.documentId);
     if (entry && targetDocument && targetDocument.id !== activeDocumentId) {
+      editorOwnership.invalidate();
       const activated = buffer.replaceForActivation(targetDocument.source,
         baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
       setActiveDocumentId(targetDocument.id);
@@ -847,6 +854,7 @@ function DocumentWorkspace({
         headingId: originHeadingId,
         reason: "manual",
       });
+    editorOwnership.invalidate();
     const activated = buffer.replaceForActivation(targetDocument.source,
       baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
     setActiveDocumentId(targetDocument.id);
@@ -872,7 +880,8 @@ function DocumentWorkspace({
     );
     return true;
   };
-  const updateSource = (nextSource: string) => {
+  const updateSource = (nextSource: string, origin: EditorMutationOrigin) => {
+    if (!editorOwnership.accepts(editorActivation, activeDocumentId, origin)) return;
     updateWorkspaceSource(nextSource, {
       buffer,
       activeDocumentId,
@@ -881,7 +890,8 @@ function DocumentWorkspace({
       setIsDirty,
     });
   };
-  const changeCurrentHeading = (direction: "promote" | "demote") => {
+  const changeCurrentHeading = (direction: "promote" | "demote", origin: EditorMutationOrigin) => {
+    if (!editorOwnership.accepts(editorActivation, activeDocumentId, origin)) return;
     applyWorkspaceStructuralHeadingChange(direction, {
       source,
       editorLine,
@@ -906,6 +916,7 @@ function DocumentWorkspace({
     );
     if (!targetDocument) return;
     if (targetDocument.id !== activeDocumentId) {
+      editorOwnership.invalidate();
       const activated = buffer.replaceForActivation(targetDocument.source,
         baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
       setActiveDocumentId(targetDocument.id);
@@ -965,6 +976,7 @@ function DocumentWorkspace({
       );
       if (heading) goToHeading(heading, "history", false);
     } else {
+      editorOwnership.invalidate();
       const activated = buffer.replaceForActivation(originDocument.source,
         baselines.takeForActivation(originDocument.id, buffer.snapshot()));
       setActiveDocumentId(originDocument.id);
@@ -994,6 +1006,7 @@ function DocumentWorkspace({
       const documents = createCollection([
         { id: browserDocumentId(file), name: file.name, source },
       ]);
+      editorOwnership.invalidate();
       buffer.replace(source, "programmatic");
       const saved = buffer.markSaved();
       baselines.reset(documents.map(document => document.id), documents[0].id);
@@ -1026,6 +1039,7 @@ function DocumentWorkspace({
         ),
       );
       const active = documents[0];
+      editorOwnership.invalidate();
       baselines.reset(documents.map(document => document.id), documents[0].id);
       setCollection(documents);
       setActiveDocumentId(active.id);
@@ -1061,6 +1075,7 @@ function DocumentWorkspace({
       targetModel.headings.map((heading) => heading.id),
     );
     const resolved = resolveSemanticPosition(targetModel, remembered?.position);
+    editorOwnership.invalidate();
     const activated = buffer.replaceForActivation(collectionDocument.source,
       baselines.takeForActivation(collectionDocument.id, buffer.snapshot()));
     setActiveDocumentId(collectionDocument.id);
@@ -1102,6 +1117,7 @@ function DocumentWorkspace({
         headingId: originHeadingId,
         reason: "manual",
       });
+    editorOwnership.invalidate();
     const activated = buffer.replaceForActivation(targetDocument.source,
       baselines.takeForActivation(targetDocument.id, buffer.snapshot()));
     const targetHeading = parseSemanticDocument(
@@ -1148,6 +1164,7 @@ function DocumentWorkspace({
         source: file.source,
       },
     ]);
+    editorOwnership.invalidate();
     buffer.replace(file.source, "programmatic");
     const saved = buffer.markSaved();
     baselines.reset(documents.map(document => document.id), documents[0].id);
@@ -1179,6 +1196,7 @@ function DocumentWorkspace({
         source: file.source,
       },
     ]);
+    editorOwnership.invalidate();
     buffer.replace(file.source, "programmatic");
     const saved = buffer.markSaved();
     baselines.reset(documents.map(document => document.id), documents[0].id);
@@ -1239,6 +1257,7 @@ function DocumentWorkspace({
           readCurrentSnapshot: () => buffer.snapshot(),
           setCollection,
           setActiveDocumentId: documentId => {
+            editorOwnership.invalidate();
             baselines.remapActive(documentId);
             setActiveDocumentId(documentId);
           },
@@ -1301,7 +1320,10 @@ function DocumentWorkspace({
     },
     status: setAppStatus,
   });
-  const closeDocument = (completed = onClose): Promise<boolean> =>
+  const closeDocument = (completed = () => {
+    editorOwnership.invalidate();
+    onClose();
+  }): Promise<boolean> =>
     closeWorkspaceDocument({
       activeDocumentId,
       isDirty,
@@ -1940,6 +1962,8 @@ function DocumentWorkspace({
                 }
               >
                 <MarkdownEditor
+                  activation={editorActivation}
+                  isActivationCurrent={activation => editorOwnership.isCurrent(activation)}
                   onScrollAdapter={splitSync.setEditor}
                   onNavigate={splitSync.onNavigate}
                   value={source}
@@ -1947,8 +1971,8 @@ function DocumentWorkspace({
                   cursorLine={editorLine}
                   onCursorLineChange={setEditorLine}
                   onObserveCursor={observeEditorCursor}
-                  onPromoteHeading={() => changeCurrentHeading("promote")}
-                  onDemoteHeading={() => changeCurrentHeading("demote")}
+                  onPromoteHeading={origin => changeCurrentHeading("promote", origin)}
+                  onDemoteHeading={origin => changeCurrentHeading("demote", origin)}
                   jumpToLine={diagnosticJump?.line ?? null}
                   jumpIsCurrent={diagnosticJump?.isCurrent}
                   navigationJump={outlineJump}

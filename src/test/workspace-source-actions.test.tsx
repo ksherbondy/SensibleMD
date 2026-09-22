@@ -34,7 +34,7 @@ it.each(['Write', 'Split'] as const)('preserves identical echoes, buffer origin/
     const replaceCollection = vi.spyOn(collection, 'replaceCollectionDocument');
     try {
       const initialEditorState = view.state;
-      await act(async () => captured.props!.onChange(original));
+      await act(async () => captured.props!.onChange(original, { activation: captured.props!.activation, lease: { live: true } }));
       const buffer = snapshot.mock.contexts.at(-1) as DocumentBuffer;
       expect(buffer).toBeInstanceOf(DocumentBuffer);
       const before = buffer.snapshot();
@@ -61,7 +61,7 @@ it.each(['Write', 'Split'] as const)('preserves identical echoes, buffer origin/
       const version = buffer.snapshot().version;
       replace.mockClear(); replaceCollection.mockClear();
       const editedState = view.state;
-      await act(async () => captured.props!.onChange(next));
+      await act(async () => captured.props!.onChange(next, { activation: captured.props!.activation, lease: { live: true } }));
       expect(replace).not.toHaveBeenCalled(); expect(replaceCollection).not.toHaveBeenCalled();
       expect(buffer.snapshot().version).toBe(version);
       expect(s.isDirty()).toBe(true);
